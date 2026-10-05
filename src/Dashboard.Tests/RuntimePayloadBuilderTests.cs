@@ -1,0 +1,279 @@
+using System.Text.Json;
+
+namespace Dashboard.Tests;
+
+public class RuntimePayloadBuilderTests
+{
+    private static readonly DateTimeOffset Now = new(2026, 10, 4, 22, 0, 0, TimeSpan.Zero);
+    private static readonly Uri Page = new("http://localhost:5210/");
+
+    private static readonly Topology SampleTopology =
+        TopologyParser.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "topology.sample.json"))).Topology!;
+
+    private static RuntimeManifest Manifest(string environment) =>
+        RuntimeManifestParser.ParseManifest(RuntimeManifestParserTests.Sample($"{environment}.json")).Value!;
+
+    private static EnvironmentStatus Environment(string name) =>
+        new(SampleTopology.Environments.Single(environment => environment.Name == name));
+
+    private static ProbeResult Answer(int status, string version = "2.4.21") =>
+        new(HealthClassifier.FromStatusCode(status), status, 40, Now, version);
+
+    private static readonly string[] CheckedAliases = ["fd_ui", "app_ui_primary", "app_ui_standby"];
+
+    private static readonly ProbeResult NoAnswer = new(HealthState.Unreachable, null, null, Now, null, "No answer within 10 s.");
+
+    /// <summary>uat with every endpoint answering: Front Door, primary westus3, standby eastus2.</summary>
+    private static EnvironmentStatus Uat(int frontDoor = 200, int primary = 200, int standby = 200, string pinned = "2.4.21")
+    {
+        var uat = Environment("uat");
+        var ui = uat.Deployables[0];
+        ui.FrontDoor!.Record(Answer(frontDoor));
+        ui.Nodes[0].Record(Answer(primary));
+        ui.Nodes[1].Record(standby == 0 ? NoAnswer : Answer(standby, "2.4.20"));
+        uat.Record(PinnedVersions.Parse($$"""{ "ui": "{{pinned}}" }"""));
+        return uat;
+    }
+
+    private static RuntimePayload Build(EnvironmentStatus? environment, string manifest = "uat") =>
+        RuntimePayloadBuilder.Build(Manifest(manifest), environment, Page, TimeZoneInfo.Utc);
+
+    private static RuntimeTile Tile(RuntimePayload payload, string alias) => payload.Nodes.Single(tile => tile.Alias == alias);
+
+    private static string Region(RuntimePayload payload, string alias) => payload.Regions.Single(region => region.Alias == alias).State;
+
+    private static string Edge(RuntimePayload payload, string id) => payload.Edges.Single(edge => edge.Id == id).State;
+
+    [Fact]
+    public void EveryNodeButThePersonGetsATileAndEveryRegionAndRelationshipAMark()
+    {
+        var payload = Build(Uat());
+
+        Assert.Equal(["fd_ui", "app_ui_standby", "app_ui_primary", "sqldb", "swa_dashboard"], payload.Nodes.Select(tile => tile.Alias));
+        Assert.Equal(["region_standby", "region_primary", "region_data"], payload.Regions.Select(region => region.Alias));
+        Assert.Equal(Manifest("uat").Edges.Select(edge => edge.Id), payload.Edges.Select(edge => edge.Id));
+    }
+
+    [Fact]
+    public void BeforeTheFirstCheckEveryCheckedNodeIsBeingChecked()
+    {
+        var payload = Build(Environment("uat"));
+
+        Assert.All(CheckedAliases, alias =>
+        {
+            var tile = Tile(payload, alias);
+            Assert.Equal("checking", tile.State);
+            Assert.Equal("Checking", tile.Label);
+            Assert.Equal("not checked yet", tile.Facts);
+            Assert.Empty(tile.History!);
+        });
+        Assert.Equal("checking", Region(payload, "region_primary"));
+        Assert.Equal("checking", Edge(payload, "fd_ui-to-app_ui_primary"));
+        Assert.Equal("neutral", Region(payload, "region_data"));
+    }
+
+    [Fact]
+    public void WithEveryNodeHealthyThePrimaryRegionServesAndTheStandbyWaits()
+    {
+        var payload = Build(Uat());
+
+        var primary = Tile(payload, "app_ui_primary");
+        Assert.Equal("healthy", primary.State);
+        Assert.Equal("Healthy", primary.Label);
+        Assert.Equal("HTTP 200 · 40 ms", primary.Facts);
+        Assert.Equal(
+            [new RuntimeTileLine("version 2.4.21", "strong"), new RuntimeTileLine("pinned 2.4.21: in sync", "insync"), new RuntimeTileLine("primary: serves traffic", "serving")],
+            primary.Lines);
+        Assert.Equal(["healthy"], primary.History!);
+        Assert.Contains("https://app-cmdemo2-uat-ui.azurewebsites.net/", primary.Title, StringComparison.Ordinal);
+
+        var standby = Tile(payload, "app_ui_standby");
+        Assert.Equal(
+            [new RuntimeTileLine("version 2.4.20", "strong"), new RuntimeTileLine("differs from pinned 2.4.21", "differs"), new RuntimeTileLine("standby: ready, no traffic", "muted")],
+            standby.Lines);
+
+        Assert.Equal(new RuntimeRegionMark("region_primary", "serving", "serving traffic"), payload.Regions.Single(region => region.Alias == "region_primary"));
+        Assert.Equal(new RuntimeRegionMark("region_standby", "standby", "standby: ready"), payload.Regions.Single(region => region.Alias == "region_standby"));
+        Assert.Equal("active", Edge(payload, "fd_ui-to-app_ui_primary"));
+        Assert.Equal("idle", Edge(payload, "fd_ui-to-app_ui_standby"));
+        Assert.Equal("active", Edge(payload, "app_ui_primary-to-sqldb"));
+        Assert.Equal("idle", Edge(payload, "app_ui_standby-to-sqldb"));
+        Assert.Equal("active", Edge(payload, "browser-to-fd_ui"));
+
+        var frontDoor = Tile(payload, "fd_ui");
+        Assert.Equal(
+            [new RuntimeTileLine("version 2.4.21", "strong"), new RuntimeTileLine("routes to westus3 (priority 1)", "plain"), new RuntimeTileLine("agrees with the web apps", "ok")],
+            frontDoor.Lines);
+    }
+
+    [Fact]
+    public void WhenThePrimaryAnswers503TheDiagramShowsTheFailover()
+    {
+        var payload = Build(Uat(primary: 503));
+
+        var primary = Tile(payload, "app_ui_primary");
+        Assert.Equal("unhealthy", primary.State);
+        Assert.Equal("Unhealthy", primary.Label);
+        Assert.Equal("HTTP 503 · 40 ms", primary.Facts);
+        Assert.Equal(new RuntimeTileLine("primary: not serving", "plain"), primary.Lines[^1]);
+        Assert.Equal(new RuntimeTileLine("standby: serves traffic", "serving"), Tile(payload, "app_ui_standby").Lines[^1]);
+
+        Assert.Equal("down", Region(payload, "region_primary"));
+        Assert.Equal("serving", Region(payload, "region_standby"));
+        Assert.Equal("down", Edge(payload, "fd_ui-to-app_ui_primary"));
+        Assert.Equal("active", Edge(payload, "fd_ui-to-app_ui_standby"));
+        Assert.Equal("idle", Edge(payload, "app_ui_primary-to-sqldb"));
+        Assert.Equal("active", Edge(payload, "app_ui_standby-to-sqldb"));
+        Assert.Equal(new RuntimeTileLine("routes to eastus2 (failed over)", "serving"), Tile(payload, "fd_ui").Lines[1]);
+    }
+
+    [Fact]
+    public void WhenNothingIsHealthyNoRegionServes()
+    {
+        var payload = Build(Uat(frontDoor: 503, primary: 503, standby: 0));
+
+        Assert.Equal("unreachable", Tile(payload, "app_ui_standby").State);
+        Assert.Equal("no answer", Tile(payload, "app_ui_standby").Facts);
+        Assert.Equal("down", Region(payload, "region_primary"));
+        Assert.Equal("down", Region(payload, "region_standby"));
+        Assert.Equal("down", Edge(payload, "browser-to-fd_ui"));
+        Assert.Equal("down", Edge(payload, "fd_ui-to-app_ui_standby"));
+        Assert.Equal(new RuntimeTileLine("no healthy origin", "plain"), Tile(payload, "fd_ui").Lines[1]);
+        Assert.Equal(new RuntimeTileLine("agrees with the web apps", "ok"), Tile(payload, "fd_ui").Lines[2]);
+    }
+
+    [Fact]
+    public void AnEnvironmentWithoutAStandbyHasNoStandbyRegionNorItsRelationships()
+    {
+        var tdd = Environment("tdd");
+        tdd.Deployables[0].Nodes[0].Record(Answer(200));
+        tdd.Deployables[0].FrontDoor!.Record(Answer(200));
+
+        var payload = Build(tdd, "tdd");
+
+        Assert.Equal(["fd_ui", "app_ui_primary", "sqldb", "swa_dashboard"], payload.Nodes.Select(tile => tile.Alias));
+        Assert.Equal(["region_primary", "region_data"], payload.Regions.Select(region => region.Alias));
+        Assert.DoesNotContain(payload.Edges, edge => edge.Id.Contains("standby", StringComparison.Ordinal));
+        Assert.Equal("serving", Region(payload, "region_primary"));
+        Assert.Equal("active", Edge(payload, "fd_ui-to-app_ui_primary"));
+    }
+
+    [Fact]
+    public void TheDatabaseIsNeverProbedAndTheDashboardKnowsItsOwnSite()
+    {
+        var tdd = Build(Environment("tdd"), "tdd");
+        var uat = Build(Environment("uat"));
+
+        Assert.Equal(new RuntimeTileLine("not probed from the browser", "muted"), Assert.Single(Tile(tdd, "sqldb").Lines));
+        Assert.Equal("neutral", Tile(tdd, "sqldb").State);
+        Assert.Equal("Not probed", Tile(tdd, "sqldb").Label);
+        Assert.Null(Tile(tdd, "sqldb").History);
+        // The sample's tdd dashboard is http://localhost:5210, the page of dotnet run; uat's address is not known.
+        Assert.Equal("This page", Tile(tdd, "swa_dashboard").Label);
+        Assert.Equal(new RuntimeTileLine("its address is not in this deployment", "muted"), Assert.Single(Tile(uat, "swa_dashboard").Lines));
+        Assert.Equal("neutral", Edge(uat, "browser-to-swa_dashboard"));
+        Assert.Equal(new RuntimeRegionMark("region_data", "neutral", "database, static sites: not probed"), uat.Regions.Single(region => region.Alias == "region_data"));
+    }
+
+    [Fact]
+    public void ANodeTheTopologyDoesNotHaveIsDrawnNeutralWithTheReason()
+    {
+        var manifest = Manifest("uat") with
+        {
+            Nodes =
+            [
+                .. Manifest("uat").Nodes.Where(node => node.Alias != "app_ui_standby"),
+                new RuntimeNode("app_ui_standby", RuntimeNodeKind.WebApp, "app-cmdemo2-uat-ui-westeurope", new Uri("https://app-cmdemo2-uat-ui-westeurope.azurewebsites.net"), "ui", "standby", "westeurope", "region_standby"),
+            ],
+        };
+
+        var payload = RuntimePayloadBuilder.Build(manifest, Uat(), Page, TimeZoneInfo.Utc);
+
+        var tile = Tile(payload, "app_ui_standby");
+        Assert.Equal(("neutral", "Not checked"), (tile.State, tile.Label));
+        Assert.Equal(new RuntimeTileLine("not in topology.json", "muted"), Assert.Single(tile.Lines));
+        Assert.Equal(new RuntimeRegionMark("region_standby", "neutral", "not checked"), payload.Regions.Single(region => region.Alias == "region_standby"));
+        Assert.Equal("neutral", Edge(payload, "fd_ui-to-app_ui_standby"));
+        Assert.Equal("healthy", Tile(payload, "app_ui_primary").State);
+    }
+
+    [Fact]
+    public void AnEnvironmentTheTopologyDoesNotHaveShowsNothingAsChecked()
+    {
+        var payload = Build(null);
+
+        Assert.All(payload.Nodes, tile => Assert.Equal("neutral", tile.State));
+        Assert.All(payload.Regions, region => Assert.Equal("neutral", region.State));
+        Assert.All(payload.Edges, edge => Assert.Equal("neutral", edge.State));
+    }
+
+    [Fact]
+    public void AFrontDoorEndpointWithoutAnAddressIsNotDeployedYet()
+    {
+        var manifest = Manifest("uat") with
+        {
+            Nodes = [.. Manifest("uat").Nodes.Select(node => node.Alias == "fd_ui" ? node with { Url = null } : node)],
+        };
+
+        var tile = Tile(RuntimePayloadBuilder.Build(manifest, Uat(), Page, TimeZoneInfo.Utc), "fd_ui");
+
+        Assert.Equal(("neutral", "No address"), (tile.State, tile.Label));
+        Assert.Equal(new RuntimeTileLine("endpoint not deployed yet", "muted"), Assert.Single(tile.Lines));
+    }
+
+    [Fact]
+    public void WithoutPinnedVersionsTheTileHasNoComparisonLine()
+    {
+        var topology = SampleTopology.Environments.Single(environment => environment.Name == "uat") with { VersionsUrl = null };
+        var uat = new EnvironmentStatus(topology);
+        uat.Deployables[0].Nodes[0].Record(Answer(200));
+
+        var lines = Tile(Build(uat), "app_ui_primary").Lines;
+
+        Assert.Equal(["version 2.4.21", "primary: serves traffic"], lines.Select(line => line.Text));
+    }
+
+    [Theory]
+    [InlineData(PinnedVersionsState.Pending, "reading the pinned version")]
+    [InlineData(PinnedVersionsState.Missing, "no pinned version")]
+    [InlineData(PinnedVersionsState.Unavailable, "pinned version not known")]
+    public void APinnedVersionThatIsNotKnownSaysWhy(PinnedVersionsState state, string text)
+    {
+        var uat = Environment("uat");
+        uat.Deployables[0].Nodes[0].Record(Answer(200));
+        uat.Record(state switch
+        {
+            PinnedVersionsState.Missing => PinnedVersions.Missing,
+            PinnedVersionsState.Unavailable => PinnedVersions.Unavailable("HTTP 500"),
+            _ => PinnedVersions.Pending,
+        });
+
+        Assert.Equal(new RuntimeTileLine(text, "unknown"), Tile(Build(uat), "app_ui_primary").Lines[1]);
+    }
+
+    [Fact]
+    public void TheNumberLinesHoldAPlaceForCallsPerMinute()
+    {
+        var payload = Build(Uat());
+
+        var origin = payload.Edges.Single(edge => edge.Id == "fd_ui-to-app_ui_standby");
+        Assert.Equal((RuntimePayloadBuilder.NoNumber, "calls/min", "when priority 1 is down"), (origin.Number, origin.Unit, origin.Text));
+        Assert.Equal("first, while healthy", payload.Edges.Single(edge => edge.Id == "fd_ui-to-app_ui_primary").Text);
+        Assert.Equal("queries of the app", payload.Edges.Single(edge => edge.Id == "app_ui_primary-to-sqldb").Text);
+        Assert.Null(payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Number);
+    }
+
+    [Fact]
+    public void ThePayloadIsCamelCaseJsonWithoutNulls()
+    {
+        using var json = JsonDocument.Parse(Build(Environment("uat")).ToJson());
+
+        var root = json.RootElement;
+        Assert.Equal(["nodes", "regions", "edges"], root.EnumerateObject().Select(property => property.Name));
+        var sql = root.GetProperty("nodes").EnumerateArray().Single(node => node.GetProperty("alias").GetString() == "sqldb");
+        Assert.Equal(["alias", "state", "label", "lines", "title"], sql.EnumerateObject().Select(property => property.Name));
+        Assert.Equal("muted", sql.GetProperty("lines")[0].GetProperty("tone").GetString());
+        var edge = root.GetProperty("edges")[0];
+        Assert.Equal(["id", "state", "title"], edge.EnumerateObject().Select(property => property.Name));
+    }
+}

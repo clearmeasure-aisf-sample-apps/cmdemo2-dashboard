@@ -18,12 +18,14 @@
 
   <ItemGroup>
     <Using Include="Dashboard.Health" />
+    <Using Include="Dashboard.Runtime" />
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <!-- The sample the app ships with: a test reads it, so the sample always matches the contract. -->
+  <!-- The samples the app ships with: tests read them, so the samples always match the contract. -->
   <ItemGroup>
     <None Include="..\Dashboard\wwwroot\topology.json" Link="topology.sample.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Dashboard\wwwroot\runtime\*.json;..\Dashboard\wwwroot\runtime\*.svg" Link="runtime.sample\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
