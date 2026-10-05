@@ -24,7 +24,9 @@ public class TopologyParserTests
     {
         var topology = Valid(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "topology.sample.json")));
 
-        Assert.Equal(new SystemInfo("cmdemo2", "CM demo 2 multi-region"), topology.System);
+        Assert.Equal(
+            new SystemInfo("cmdemo2", "CM demo 2 multi-region", new Uri("https://github.com/example-org/cmdemo2-system")),
+            topology.System);
         Assert.Equal(new DateTimeOffset(2026, 10, 4, 22, 0, 0, TimeSpan.Zero), topology.Generated);
         Assert.Equal(["tdd", "uat"], topology.Environments.Select(environment => environment.Name));
         Assert.All(topology.Environments, environment => Assert.Equal("nonprod", environment.Tier));
@@ -44,6 +46,70 @@ public class TopologyParserTests
         Assert.Equal(["primary", "standby"], uat.Nodes.Select(node => node.Role));
         Assert.True(uat.Nodes[0].IsPrimary);
         Assert.False(uat.Nodes[1].IsPrimary);
+
+        // Where the versions pinned in Git are read, and the links into GitHub and Octopus Deploy.
+        Assert.Equal(
+            [
+                "https://raw.githubusercontent.com/example-org/cmdemo2-system/main/environments/tdd/versions.json",
+                "https://raw.githubusercontent.com/example-org/cmdemo2-system/main/environments/uat/versions.json",
+            ],
+            topology.Environments.Select(environment => environment.VersionsUrl?.AbsoluteUri));
+        Assert.Equal(
+            [
+                "https://github.com/example-org/cmdemo2-system/commits/main/environments/tdd/versions.json",
+                "https://github.com/example-org/cmdemo2-system/commits/main/environments/uat/versions.json",
+            ],
+            topology.Environments.Select(environment => environment.VersionsHistoryUrl?.AbsoluteUri));
+        Assert.Equal("https://example.octopus.app/app#/Spaces-1/projects/cmdemo2-ui", tdd.ProjectUrl?.AbsoluteUri);
+        Assert.Equal(tdd.ProjectUrl, uat.ProjectUrl);
+    }
+
+    [Theory]
+    [InlineData("""{ "environments": [ { "name": "tdd", "deployables": [ { "name": "ui", "nodes": [] } ] } ] }""")]
+    [InlineData("""
+        { "system": { "slug": "demo", "repository": null },
+          "environments": [ { "name": "tdd", "versionsUrl": null, "versionsHistoryUrl": null,
+            "deployables": [ { "name": "ui", "projectUrl": null, "nodes": [] } ] } ] }
+        """)]
+    public void TheVersionAndLinkAddressesMayBeAbsentOrNull(string json)
+    {
+        var topology = Valid(json);
+
+        Assert.Null(topology.System.Repository);
+        Assert.Null(topology.Environments[0].VersionsUrl);
+        Assert.Null(topology.Environments[0].VersionsHistoryUrl);
+        Assert.Null(topology.Environments[0].Deployables[0].ProjectUrl);
+    }
+
+    [Fact]
+    public void TheOctopusProjectAddressKeepsItsFragment()
+    {
+        var deployable = Valid("""
+            { "environments": [ { "name": "tdd", "deployables": [
+              { "name": "ui", "projectUrl": " https://octopus.example.net/app#/Spaces-42/projects/demo-ui " } ] } ] }
+            """).Environments[0].Deployables[0];
+
+        Assert.Equal("https://octopus.example.net/app#/Spaces-42/projects/demo-ui", deployable.ProjectUrl?.AbsoluteUri);
+    }
+
+    [Fact]
+    public void AVersionOrLinkAddressThatIsNotAnAddressIsAnErrorWithItsPlace()
+    {
+        var errors = Invalid("""
+            { "system": { "slug": "demo", "repository": "example-org/demo-system" },
+              "environments": [
+                { "name": "tdd", "versionsUrl": "environments/tdd/versions.json", "versionsHistoryUrl": 7,
+                  "deployables": [ { "name": "ui", "projectUrl": "javascript:alert(1)" } ] } ] }
+            """);
+
+        Assert.Equal(
+            [
+                "system.repository: not an absolute http or https address.",
+                "environments[0].versionsUrl: not an absolute http or https address.",
+                "environments[0].versionsHistoryUrl: not an absolute http or https address.",
+                "environments[0].deployables[0].projectUrl: not an absolute http or https address.",
+            ],
+            errors);
     }
 
     [Fact]
