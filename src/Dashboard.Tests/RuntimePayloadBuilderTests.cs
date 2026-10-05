@@ -159,20 +159,70 @@ public class RuntimePayloadBuilderTests
     }
 
     [Fact]
-    public void TheDatabaseIsNeverProbedAndTheDashboardKnowsItsOwnSite()
+    public void TheDatabaseWaitsForTheHealthChecksAndTheDashboardKnowsItsOwnSite()
     {
         var tdd = Build(Environment("tdd"), "tdd");
         var uat = Build(Environment("uat"));
 
-        Assert.Equal(new RuntimeTileLine("not probed from the browser", "muted"), Assert.Single(Tile(tdd, "sqldb").Lines));
-        Assert.Equal("neutral", Tile(tdd, "sqldb").State);
-        Assert.Equal("Not probed", Tile(tdd, "sqldb").Label);
+        Assert.Equal(("checking", "Checking"), (Tile(tdd, "sqldb").State, Tile(tdd, "sqldb").Label));
+        Assert.Equal(new RuntimeTileLine("waiting for the health checks", "muted"), Assert.Single(Tile(tdd, "sqldb").Lines));
         Assert.Null(Tile(tdd, "sqldb").History);
         // The sample's tdd dashboard is http://localhost:5210, the page of dotnet run; uat's address is not known.
         Assert.Equal("This page", Tile(tdd, "swa_dashboard").Label);
         Assert.Equal(new RuntimeTileLine("its address is not in this deployment", "muted"), Assert.Single(Tile(uat, "swa_dashboard").Lines));
         Assert.Equal("neutral", Edge(uat, "browser-to-swa_dashboard"));
         Assert.Equal(new RuntimeRegionMark("region_data", "neutral", "database, static sites: not probed"), uat.Regions.Single(region => region.Alias == "region_data"));
+    }
+
+    [Fact]
+    public void APassingHealthCheckOfAWebAppSaysTheDatabaseIsReachable()
+    {
+        var payload = Build(Uat(standby: 0));
+
+        var database = Tile(payload, "sqldb");
+        Assert.Equal(("healthy", "Reachable"), (database.State, database.Label));
+        Assert.Equal(new RuntimeTileLine("health check of westus3 passed", "ok"), Assert.Single(database.Lines));
+        Assert.Null(database.Facts);
+        Assert.Contains("app-cmdemo2-uat-ui connected to it (last 22:00", database.Title, StringComparison.Ordinal);
+        Assert.Equal(new RuntimeRegionMark("region_data", "neutral", "database: reachable; static sites: not probed"), payload.Regions.Single(region => region.Alias == "region_data"));
+        Assert.Equal(new RuntimeTileLine("health checks of 2 web apps passed", "ok"), Assert.Single(Tile(Build(Uat()), "sqldb").Lines));
+    }
+
+    [Fact]
+    public void FailingHealthChecksLeaveTheDatabaseNotConfirmedNotDown()
+    {
+        var payload = Build(Uat(frontDoor: 503, primary: 503, standby: 0));
+
+        var database = Tile(payload, "sqldb");
+        Assert.Equal(("neutral", "Not confirmed"), (database.State, database.Label));
+        Assert.Equal(new RuntimeTileLine("no health check of its apps passes", "muted"), Assert.Single(database.Lines));
+        Assert.Equal("database, static sites: not probed", payload.Regions.Single(region => region.Alias == "region_data").Label);
+    }
+
+    [Fact]
+    public void TheLivenessProbeLeavesTheDatabaseNotProbed()
+    {
+        var uat = Environment("uat");
+        foreach (var node in uat.Deployables[0].Nodes)
+        {
+            node.Record(Answer(200) with { Probe = ProbeKind.Liveness });
+        }
+
+        var database = Tile(Build(uat), "sqldb");
+
+        Assert.Equal(("neutral", "Not probed"), (database.State, database.Label));
+        Assert.Equal(new RuntimeTileLine("probe Liveness leaves it alone", "muted"), Assert.Single(database.Lines));
+    }
+
+    [Fact]
+    public void ADatabaseNoCheckedWebAppUsesIsNotProbed()
+    {
+        var manifest = Manifest("uat") with { Edges = [.. Manifest("uat").Edges.Where(edge => edge.Kind != RuntimeEdgeKind.Sql)] };
+
+        var database = Tile(RuntimePayloadBuilder.Build(manifest, Uat(), Page, TimeZoneInfo.Utc), "sqldb");
+
+        Assert.Equal(("neutral", "Not probed"), (database.State, database.Label));
+        Assert.Equal(new RuntimeTileLine("not probed from the browser", "muted"), Assert.Single(database.Lines));
     }
 
     [Fact]

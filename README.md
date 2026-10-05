@@ -188,7 +188,8 @@ diagram in place:
 | Front Door to an origin | Solid and green while it carries the traffic, dotted grey while idle, dashed red when the origin is not healthy: a failover is the green line moving from priority 1 to priority 2. |
 | Web app to the database | Green from the web app that serves, dotted from the others. |
 | Number line of a relationship | Room for calls per minute (a dashed frame with "–"): nothing measures them yet. Under it, the relationship's role. |
-| Database, static site | Neutral, "Not probed": the browser cannot ask Azure SQL, and the dashboard does not check itself. The static site that serves the page says "This page". |
+| Database | The browser cannot ask Azure SQL, but a web app's health check connects to it: "Reachable" (healthy) when the health check of a web app that uses it passes; "Not confirmed" (neutral) when none passes, since the web app may be the cause; "Not probed" (neutral) with the Liveness probe, which leaves the database alone. |
+| Static site | Neutral, "Not probed": the dashboard does not check itself. The static site that serves the page says "This page". |
 
 A state is never colour alone: the badge has an icon and a word, the regions a word, the lines differ in dash and
 width. Hover a node or a line for its details.

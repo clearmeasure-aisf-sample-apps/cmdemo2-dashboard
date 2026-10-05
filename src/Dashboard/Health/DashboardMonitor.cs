@@ -70,7 +70,7 @@ public sealed class DashboardMonitor
     private async Task CheckAsync(DeployableInfo deployable, TargetStatus target, ProbeKind probe, CancellationToken cancellationToken)
     {
         var result = await _prober.ProbeAsync(target.Url, deployable.PathFor(probe), deployable.VersionPath, cancellationToken);
-        target.Record(result);
+        target.Record(result with { Probe = probe });
         Changed?.Invoke();
     }
 }
