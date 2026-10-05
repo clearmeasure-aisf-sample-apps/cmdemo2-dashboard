@@ -56,8 +56,8 @@
         <p class="help runtime__help">
             Live, from the checks of this page: the state of every web app and Front Door endpoint, which region serves
             traffic, the route Front Door takes and the versions next to the pinned ones. Drawn when the dashboard was
-            deployed: the resources, their names, sizes and regions. The database is not probed from the browser, and
-            calls per minute are not measured yet (–).
+            deployed: the resources, their names, sizes and regions. The database takes no call from the browser: it is
+            reachable when the health check of a web app that uses it passes. Calls per minute are not measured yet (–).
         </p>
         @if (_diagram is { IsValid: false } broken)
         {

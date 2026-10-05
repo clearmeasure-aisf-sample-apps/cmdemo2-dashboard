@@ -7,7 +7,8 @@ namespace Dashboard.Runtime;
 /// The runtime view's update from the monitor's current state: the same checks, serving decision and version
 /// comparison the health view shows, mapped onto the diagram's elements by the manifest. A node of the manifest is
 /// matched with a target of the monitor by its address (web app, Front Door endpoint), within the environment of the
-/// same name; a node the monitor does not check is drawn neutral, with the reason in words.
+/// same name; a node the monitor does not check is drawn neutral, with the reason in words. The database takes no call
+/// from a browser: it is drawn reachable when the health check of a web app that uses it passes.
 /// </summary>
 public static class RuntimePayloadBuilder
 {
@@ -43,9 +44,15 @@ public static class RuntimePayloadBuilder
 
         var tiles = manifest.Nodes
             .Where(node => node.Kind != RuntimeNodeKind.Person)
-            .Select(node => Tile(node, byAlias.GetValueOrDefault(node.Alias), environment, page, zone))
+            .Select(node => node.Kind == RuntimeNodeKind.Sql
+                ? DatabaseTile(node, Clients(manifest, node, byAlias), zone)
+                : Tile(node, byAlias.GetValueOrDefault(node.Alias), environment, page, zone))
             .ToList();
-        var regions = manifest.Regions.Select(region => Region(region, manifest, byAlias)).ToList();
+        var reachable = manifest.Nodes
+            .Where(node => node.Kind == RuntimeNodeKind.Sql && tiles.Any(tile => tile.Alias == node.Alias && tile.State == Healthy))
+            .Select(node => node.RegionAlias)
+            .ToHashSet(StringComparer.Ordinal);
+        var regions = manifest.Regions.Select(region => Region(region, manifest, byAlias, reachable.Contains(region.Alias))).ToList();
         var edges = manifest.Edges.Select(edge => Edge(edge, byAlias)).ToList();
         return new RuntimePayload(tiles, regions, edges);
     }
@@ -98,11 +105,6 @@ public static class RuntimePayloadBuilder
 
         return node.Kind switch
         {
-            RuntimeNodeKind.Sql => NeutralTile(
-                node,
-                "Not probed",
-                "not probed from the browser",
-                $"{node.Name}: Azure SQL takes no call from a browser. The health check of each web app connects to it (probe: Health check)."),
             RuntimeNodeKind.StaticSite when node.Url is not null && page is not null && SameSite(node.Url, page) => NeutralTile(
                 node,
                 "This page",
@@ -125,6 +127,68 @@ public static class RuntimePayloadBuilder
                 $"{node.Name}: the topology this page loaded has no such address, so it is not checked. Reload the topology, or deploy the dashboard again."),
             _ => NeutralTile(node, "Not probed", string.Empty, node.Name),
         };
+    }
+
+    /// <summary>The checked web apps with a relationship to the database.</summary>
+    private static List<Entry> Clients(RuntimeManifest manifest, RuntimeNode database, Dictionary<string, Entry> byAlias) =>
+        [.. manifest.Edges
+            .Where(edge => edge.Kind == RuntimeEdgeKind.Sql && edge.To == database.Alias)
+            .Select(edge => byAlias.GetValueOrDefault(edge.From))
+            .OfType<Entry>()];
+
+    /// <summary>
+    /// The database from the web apps' health checks, which connect to it: one that passes says the database answered.
+    /// One that fails does not say it did not, since the web app itself may be the cause; the liveness probe leaves the
+    /// database alone.
+    /// </summary>
+    private static RuntimeTile DatabaseTile(RuntimeNode node, List<Entry> clients, TimeZoneInfo zone)
+    {
+        if (clients.Count == 0)
+        {
+            return NeutralTile(
+                node,
+                "Not probed",
+                "not probed from the browser",
+                $"{node.Name}: Azure SQL takes no call from a browser, and this page checks no web app that uses it.");
+        }
+
+        var passed = clients.Where(entry => entry.Target.Last is { State: HealthState.Healthy, Probe: ProbeKind.Health }).ToList();
+        if (passed.Count > 0)
+        {
+            var names = string.Join(", ", passed.Select(entry => entry.Target.Name));
+            var latest = passed.Max(entry => entry.Target.Last!.CheckedAt);
+            var line = passed.Count == 1
+                ? $"health check of {passed[0].Target.Region ?? passed[0].Target.Name} passed"
+                : $"health checks of {passed.Count} web apps passed";
+            return new RuntimeTile(
+                node.Alias,
+                Healthy,
+                "Reachable",
+                null,
+                [new RuntimeTileLine(line, "ok")],
+                null,
+                $"{node.Name}: reachable. Azure SQL takes no call from a browser; the health check of {names} connected to it (last {TimeText.Clock(latest, zone)}).");
+        }
+
+        if (clients.All(entry => entry.Target.Last is { Probe: ProbeKind.Liveness }))
+        {
+            return NeutralTile(
+                node,
+                "Not probed",
+                "probe Liveness leaves it alone",
+                $"{node.Name}: the probe is Liveness, which does not connect to the database. Choose Health check to see whether it answers.");
+        }
+
+        if (clients.Any(entry => entry.Target.State == HealthState.Pending))
+        {
+            return new RuntimeTile(node.Alias, Checking, "Checking", null, [new RuntimeTileLine("waiting for the health checks", "muted")], null, $"{node.Name}: waiting for the health checks of the web apps that use it.");
+        }
+
+        return NeutralTile(
+            node,
+            "Not confirmed",
+            "no health check of its apps passes",
+            $"{node.Name}: no web app that uses it passes its health check, so this page cannot tell whether it answers: the database or the web app may be the cause.");
     }
 
     private static RuntimeTile NeutralTile(RuntimeNode node, string label, string line, string title) =>
@@ -228,7 +292,7 @@ public static class RuntimePayloadBuilder
         };
     }
 
-    private static RuntimeRegionMark Region(RuntimeRegion region, RuntimeManifest manifest, Dictionary<string, Entry> byAlias)
+    private static RuntimeRegionMark Region(RuntimeRegion region, RuntimeManifest manifest, Dictionary<string, Entry> byAlias, bool databaseReachable)
     {
         var apps = manifest.Nodes
             .Where(node => node.Kind == RuntimeNodeKind.WebApp && node.RegionAlias == region.Alias)
@@ -236,13 +300,27 @@ public static class RuntimePayloadBuilder
             .ToList();
         if (apps.Count == 0)
         {
-            var roles = region.Roles.Select(role => role switch
+            var others = region.Roles
+                .Where(role => !(databaseReachable && role == "data"))
+                .Select(role => role switch
+                {
+                    "data" => "database",
+                    "static" => "static sites",
+                    _ => role,
+                })
+                .ToList();
+            var parts = new List<string>();
+            if (databaseReachable)
             {
-                "data" => "database",
-                "static" => "static sites",
-                _ => role,
-            });
-            return new RuntimeRegionMark(region.Alias, Neutral, $"{string.Join(", ", roles)}: not probed");
+                parts.Add("database: reachable");
+            }
+
+            if (others.Count > 0)
+            {
+                parts.Add($"{string.Join(", ", others)}: not probed");
+            }
+
+            return new RuntimeRegionMark(region.Alias, Neutral, string.Join("; ", parts));
         }
 
         // A web app the topology does not have is left out; a region with none the topology has is not checked.
