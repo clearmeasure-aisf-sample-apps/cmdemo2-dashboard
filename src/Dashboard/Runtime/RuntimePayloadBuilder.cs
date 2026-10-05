@@ -8,7 +8,9 @@ namespace Dashboard.Runtime;
 /// comparison the health view shows, mapped onto the diagram's elements by the manifest. A node of the manifest is
 /// matched with a target of the monitor by its address (web app, Front Door endpoint), within the environment of the
 /// same name; a node the monitor does not check is drawn neutral, with the reason in words. The database takes no call
-/// from a browser: it is drawn reachable when the health check of a web app that uses it passes.
+/// from a browser: it is drawn reachable when the health check of a web app that uses it passes. The numbers on the
+/// relationships are the web apps' own counts of the last minute (<see cref="TelemetrySnapshot"/>); a dash where a web
+/// app reports none.
 /// </summary>
 public static class RuntimePayloadBuilder
 {
@@ -18,7 +20,7 @@ public static class RuntimePayloadBuilder
     public const string Checking = "checking";
     public const string Neutral = "neutral";
 
-    /// <summary>The number line's placeholder until a source of calls per minute exists.</summary>
+    /// <summary>The number line's placeholder where no web app reports its calls.</summary>
     public const string NoNumber = "–";
     public const string CallsUnit = "calls/min";
 
@@ -53,7 +55,7 @@ public static class RuntimePayloadBuilder
             .Select(node => node.RegionAlias)
             .ToHashSet(StringComparer.Ordinal);
         var regions = manifest.Regions.Select(region => Region(region, manifest, byAlias, reachable.Contains(region.Alias))).ToList();
-        var edges = manifest.Edges.Select(edge => Edge(edge, byAlias)).ToList();
+        var edges = manifest.Edges.Select(edge => Edge(edge, manifest, byAlias)).ToList();
         return new RuntimePayload(tiles, regions, edges);
     }
 
@@ -160,11 +162,12 @@ public static class RuntimePayloadBuilder
             var line = passed.Count == 1
                 ? $"health check of {passed[0].Target.Region ?? passed[0].Target.Name} passed"
                 : $"health checks of {passed.Count} web apps passed";
+            var queries = clients.Select(entry => entry.Target.Telemetry).OfType<TelemetrySnapshot>().ToList();
             return new RuntimeTile(
                 node.Alias,
                 Healthy,
                 "Reachable",
-                null,
+                queries.Count == 0 ? null : string.Create(CultureInfo.InvariantCulture, $"{queries.Sum(telemetry => telemetry.Sql)} queries/min"),
                 [new RuntimeTileLine(line, "ok")],
                 null,
                 $"{node.Name}: reachable. Azure SQL takes no call from a browser; the health check of {names} connected to it (last {TimeText.Clock(latest, zone)}).");
@@ -201,6 +204,11 @@ public static class RuntimePayloadBuilder
         if (PinnedLine(environment.AssessVersions(entry.Deployable), target) is { } pinned)
         {
             lines.Add(pinned);
+        }
+
+        if (target.Telemetry is { } telemetry)
+        {
+            lines.Add(new RuntimeTileLine(TrafficText(telemetry), telemetry.Errors > 0 ? "warn" : "plain"));
         }
 
         var role = target.Role ?? (target.IsPrimary ? NodeInfo.PrimaryRole : NodeInfo.StandbyRole);
@@ -267,6 +275,20 @@ public static class RuntimePayloadBuilder
             [.. target.History.Select(result => StateOf(result.State))],
             string.Join('\n', title));
     }
+
+    /// <summary>A web app's traffic of the last minute, in one line of its tile.</summary>
+    internal static string TrafficText(TelemetrySnapshot telemetry)
+    {
+        var text = string.Create(CultureInfo.InvariantCulture, $"{telemetry.Requests} req/min");
+        if (telemetry.P95Ms is { } p95)
+        {
+            text += string.Create(CultureInfo.InvariantCulture, $" · p95 {p95} ms");
+        }
+
+        return telemetry.Errors > 0 ? string.Create(CultureInfo.InvariantCulture, $"{text} · {telemetry.Errors} errors") : text;
+    }
+
+    private static string Number(int? value) => value?.ToString(CultureInfo.InvariantCulture) ?? NoNumber;
 
     private static RuntimeTileLine VersionLine(TargetStatus target) =>
         target.Version is { } version ? new RuntimeTileLine($"version {version}", "strong") : new RuntimeTileLine("version not known", "muted");
@@ -345,7 +367,7 @@ public static class RuntimePayloadBuilder
             : new RuntimeRegionMark(alias, "down", "not serving");
     }
 
-    private static RuntimeEdgeMark Edge(RuntimeEdge edge, Dictionary<string, Entry> byAlias)
+    private static RuntimeEdgeMark Edge(RuntimeEdge edge, RuntimeManifest manifest, Dictionary<string, Entry> byAlias)
     {
         var from = byAlias.GetValueOrDefault(edge.From);
         var to = byAlias.GetValueOrDefault(edge.To);
@@ -357,7 +379,12 @@ public static class RuntimePayloadBuilder
                     ? "first, while healthy"
                     : "when priority 1 is down";
                 var state = to is null ? Neutral : Carries(to);
-                return new RuntimeEdgeMark(edge.Id, state, NoNumber, CallsUnit, role, $"Front Door to {edge.To}, origin priority {edge.Priority?.ToString(CultureInfo.InvariantCulture) ?? "not known"}: {role}. {Words(state)} Calls per minute: not measured yet.");
+                var telemetry = to?.Target.Telemetry;
+                var text = telemetry is { FrontDoorProbes: > 0 } ? string.Create(CultureInfo.InvariantCulture, $"{role} · {telemetry.FrontDoorProbes} probes") : role;
+                var counted = telemetry is null
+                    ? "Calls per minute: the web app reports none."
+                    : string.Create(CultureInfo.InvariantCulture, $"Last minute, counted by the web app: {telemetry.FromFrontDoor} requests forwarded by Front Door, {telemetry.FrontDoorProbes} Front Door health probes.");
+                return new RuntimeEdgeMark(edge.Id, state, Number(telemetry?.FromFrontDoor), CallsUnit, text, $"Front Door to {edge.To}, origin priority {edge.Priority?.ToString(CultureInfo.InvariantCulture) ?? "not known"}: {role}. {Words(state)} {counted}");
             }
 
             case RuntimeEdgeKind.Sql:
@@ -365,7 +392,11 @@ public static class RuntimePayloadBuilder
                 // A web app that is down sends no queries: the database is not the reason, so the line is idle.
                 var carries = from is null ? Neutral : Carries(from);
                 var state = carries == "down" ? "idle" : carries;
-                return new RuntimeEdgeMark(edge.Id, state, NoNumber, CallsUnit, "queries of the app", $"{edge.From} to the database. {Words(state)} Calls per minute: not measured yet.");
+                var telemetry = from?.Target.Telemetry;
+                var counted = telemetry is null
+                    ? "Queries per minute: the web app reports none."
+                    : string.Create(CultureInfo.InvariantCulture, $"Last minute, counted by the web app: {telemetry.Sql} SQL commands{(telemetry.SqlP95Ms is { } p95 ? $", p95 {p95} ms" : string.Empty)}; its health checks query the database too.");
+                return new RuntimeEdgeMark(edge.Id, state, Number(telemetry?.Sql), CallsUnit, "queries of the app", $"{edge.From} to the database. {Words(state)} {counted}");
             }
 
             case RuntimeEdgeKind.Public:
@@ -377,12 +408,36 @@ public static class RuntimePayloadBuilder
                     HealthState.Pending => Checking,
                     _ => "down",
                 };
-                return new RuntimeEdgeMark(edge.Id, state, null, null, null, $"The browser to {edge.To}: {Words(state)}");
+                var (number, counted) = PublicCalls(edge, manifest, byAlias);
+                return new RuntimeEdgeMark(edge.Id, state, number, CallsUnit, null, $"The browser to {edge.To}: {Words(state)} {counted}");
             }
 
             default:
                 return new RuntimeEdgeMark(edge.Id, Neutral, null, null, null, $"{edge.From} to {edge.To}");
         }
+    }
+
+    /// <summary>
+    /// The calls to a public address: for a Front Door endpoint, the sum of what its origins counted as forwarded by
+    /// Front Door (no caching rule is set, so every call reaches an origin); for a web app's own address, its direct calls.
+    /// </summary>
+    private static (string Number, string Words) PublicCalls(RuntimeEdge edge, RuntimeManifest manifest, Dictionary<string, Entry> byAlias)
+    {
+        var origins = manifest.Edges.Any(other => other.Kind == RuntimeEdgeKind.Origin && other.From == edge.To)
+            ? manifest.Edges.Where(other => other.Kind == RuntimeEdgeKind.Origin && other.From == edge.To).Select(other => byAlias.GetValueOrDefault(other.To)?.Target.Telemetry).ToList()
+            : null;
+        if (origins is not null)
+        {
+            var counted = origins.OfType<TelemetrySnapshot>().ToList();
+            return counted.Count == 0
+                ? (NoNumber, "Calls per minute: no origin reports them.")
+                : (Number(counted.Sum(telemetry => telemetry.FromFrontDoor)), "Calls per minute: the sum of what its origins counted from Front Door.");
+        }
+
+        var direct = byAlias.GetValueOrDefault(edge.To)?.Target.Telemetry;
+        return direct is null
+            ? (NoNumber, "Calls per minute: the web app reports none.")
+            : (Number(direct.Direct), "Calls per minute: counted by the web app.");
     }
 
     /// <summary>Whether the traffic of a node's deployable goes through this node, by the serving decision.</summary>

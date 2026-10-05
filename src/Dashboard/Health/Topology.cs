@@ -26,6 +26,10 @@ public sealed record EnvironmentInfo(
 /// One deployable of an environment: its public address (Front Door), the nodes behind it and the page of the project
 /// that deploys it (<c>ProjectUrl</c>, in Octopus Deploy).
 /// </summary>
+/// <param name="TelemetryPath">
+/// Where a node reports its own calls of the last minute (<c>/_telemetry</c>); null when the app has no such endpoint.
+/// </param>
+/// <param name="TrafficPaths">The paths the traffic button calls: representative requests, the start page first.</param>
 public sealed record DeployableInfo(
     string Name,
     Uri? FrontDoor,
@@ -33,7 +37,9 @@ public sealed record DeployableInfo(
     string AlivePath,
     string VersionPath,
     IReadOnlyList<NodeInfo> Nodes,
-    Uri? ProjectUrl = null)
+    Uri? ProjectUrl = null,
+    string? TelemetryPath = null,
+    IReadOnlyList<string>? TrafficPaths = null)
 {
     public const string DefaultHealthPath = "/_healthcheck";
     public const string DefaultAlivePath = "/alive";

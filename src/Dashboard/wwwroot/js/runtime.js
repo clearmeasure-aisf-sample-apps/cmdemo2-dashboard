@@ -203,8 +203,10 @@ function drawEdge(group, mark) {
   if (!slot) return;
   const { x, y, width, layer } = slot;
   layer.classList.add('rt-number');
+  // A counted number gets a solid frame; the dash of a relationship nobody counts keeps the dashed one.
+  if (mark.number !== '–') layer.classList.add('rt-number--counted');
   const centre = x + width / 2;
-  // The number line: a dashed frame marks where calls per minute will be; the role under it.
+  // The number line: the calls of the last minute in a frame; the role under it.
   const line = el('text', { y: y + 13, 'font-size': 12, class: 'rt-number__text' });
   line.appendChild(el('tspan', { class: 'rt-number__value', 'font-size': 13 }, mark.number));
   line.appendChild(el('tspan', {}, ` ${mark.unit || ''}`));

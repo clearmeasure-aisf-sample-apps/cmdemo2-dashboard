@@ -143,6 +143,11 @@
     }
 </main>
 
+@if (_monitor is { } trafficMonitor)
+{
+    <TrafficPanel Monitor="trafficMonitor" Environment="@(_address.Environment ?? _runtimeEnvironment)" CheckNow="CheckNow" Time="Time" />
+}
+
 <footer class="page-footer">
     <span>Dashboard @DashboardVersion</span>
     @if (_monitor is { } loaded)

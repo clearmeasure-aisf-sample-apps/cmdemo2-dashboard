@@ -57,7 +57,9 @@
             Live, from the checks of this page: the state of every web app and Front Door endpoint, which region serves
             traffic, the route Front Door takes and the versions next to the pinned ones. Drawn when the dashboard was
             deployed: the resources, their names, sizes and regions. The database takes no call from the browser: it is
-            reachable when the health check of a web app that uses it passes. Calls per minute are not measured yet (–).
+            reachable when the health check of a web app that uses it passes. Calls per minute are the last minute as each
+            web app counts it (its <code>/_telemetry</code>): requests Front Door forwarded, Front Door's health probes and
+            SQL commands; a dash where a web app reports none. "Generate traffic" at the bottom of the page makes them move.
         </p>
         @if (_diagram is { IsValid: false } broken)
         {

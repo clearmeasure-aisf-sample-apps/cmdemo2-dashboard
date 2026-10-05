@@ -78,6 +78,32 @@ public sealed class NodeProber(HttpClient http, TimeProvider time)
         }
     }
 
+    /// <summary>
+    /// A node's own count of its calls (<see cref="TelemetrySnapshot"/>). Like the version, a courtesy: a node without
+    /// the endpoint, or one that does not answer in time, has no numbers, and that is no failure.
+    /// </summary>
+    public async Task<TelemetrySnapshot?> ReadTelemetryAsync(Uri baseAddress, string telemetryPath, CancellationToken cancellationToken)
+    {
+        using var timeout = new CancellationTokenSource(Timeout, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        try
+        {
+            using var request = NewRequest(ProbeUrl.Combine(baseAddress, telemetryPath));
+            using var response = await http.SendAsync(request, linked.Token);
+            return response.IsSuccessStatusCode
+                ? TelemetrySnapshot.Parse(await response.Content.ReadAsStringAsync(linked.Token), time.GetUtcNow())
+                : null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>A GET that the browser neither answers from its cache nor stores in it.</summary>
     internal static HttpRequestMessage NewRequest(Uri address)
     {
