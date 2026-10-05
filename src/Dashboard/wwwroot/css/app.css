@@ -314,9 +314,17 @@ main {
   font-weight: 600;
 }
 
-.serving {
+/* The banner and, under it, the line with the versions. */
+.deployable__status {
   display: flex;
   flex: 1 1 18rem;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.serving {
+  display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.15rem 1rem;
@@ -391,6 +399,89 @@ main {
 
 .serving--down .serving__icon {
   stroke: var(--critical);
+}
+
+/* ---------- Versions: pinned in Git next to what the nodes run ---------- */
+
+.versions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 1rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--pending);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-secondary);
+  font-size: 0.88rem;
+}
+
+/* The words give the line its baseline, so the text after them sits on the same line; the sign is centred. */
+.versions__pinned {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  color: var(--ink);
+}
+
+.version-icon {
+  flex: none;
+  align-self: center;
+  fill: none;
+  stroke: var(--pending);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.version-icon--insync {
+  stroke: var(--good);
+}
+
+.version-icon--differs {
+  stroke: var(--ink);
+}
+
+.versions--insync {
+  border-left-color: var(--good);
+}
+
+/* A node runs another version than the pinned one: a warning, with the words "Differs" and the not-equal sign. */
+.versions--differs {
+  border-color: var(--serious);
+  border-left-color: var(--serious);
+  background: var(--serious-wash);
+}
+
+.versions--differs .versions__detail {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The links stay on the right while there is room, and wrap under the text on a narrow screen. */
+.versions__links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  margin-left: auto;
+}
+
+.versions__links a {
+  white-space: nowrap;
+}
+
+/* An arrow marks a link that opens a new tab. */
+.versions__links a::after {
+  content: " \2197\FE0E";
+}
+
+.summary-versions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 /* ---------- Tiles ---------- */
@@ -674,6 +765,7 @@ main {
 @media (forced-colors: active) {
   .tile,
   .serving,
+  .versions,
   .state {
     border: 1px solid CanvasText;
   }

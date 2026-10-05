@@ -4,22 +4,18 @@ namespace Dashboard.Health;
 public sealed class DashboardMonitor
 {
     private readonly NodeProber _prober;
+    private readonly PinnedVersionsReader _versions;
     private readonly TimeProvider _time;
     private readonly List<(DeployableStatus Deployable, TargetStatus Target)> _targets;
 
-    public DashboardMonitor(Topology topology, NodeProber prober, TimeProvider time)
+    public DashboardMonitor(Topology topology, NodeProber prober, PinnedVersionsReader versions, TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(topology);
         Topology = topology;
         _prober = prober;
+        _versions = versions;
         _time = time;
-        Environments =
-        [
-            .. topology.Environments.Select(environment => new EnvironmentStatus(
-                environment.Name,
-                environment.Tier,
-                [.. environment.Deployables.Select(deployable => new DeployableStatus(deployable))])),
-        ];
+        Environments = [.. topology.Environments.Select(environment => new EnvironmentStatus(environment))];
         _targets =
         [
             .. from environment in Environments
@@ -40,17 +36,34 @@ public sealed class DashboardMonitor
 
     public HealthSummary Summary => HealthSummary.Of(Targets.Select(target => target.State));
 
+    /// <summary>In how many environments a node runs another version than the one pinned in Git.</summary>
+    public VersionSummary VersionSummary => new(Environments.Count(environment => environment.VersionsDiffer));
+
     /// <summary>When the last round of checks ended; null before the first one.</summary>
     public DateTimeOffset? LastRefresh { get; private set; }
 
     /// <summary>
     /// Checks every endpoint at the same time. Each result is recorded as it arrives, so a node that hangs until its
-    /// timeout delays neither the others nor their display.
+    /// timeout delays neither the others nor their display. The pinned versions are read at the same time, once per
+    /// environment: a file that cannot be read is a result like any other and fails no check.
     /// </summary>
     public async Task CheckAllAsync(ProbeKind probe, CancellationToken cancellationToken)
     {
-        await Task.WhenAll(_targets.Select(entry => CheckAsync(entry.Deployable.Info, entry.Target, probe, cancellationToken)));
+        var checks = _targets.Select(entry => CheckAsync(entry.Deployable.Info, entry.Target, probe, cancellationToken));
+        var readings = Environments.Select(environment => ReadPinnedVersionsAsync(environment, cancellationToken));
+        await Task.WhenAll(checks.Concat(readings));
         LastRefresh = _time.GetUtcNow();
+        Changed?.Invoke();
+    }
+
+    private async Task ReadPinnedVersionsAsync(EnvironmentStatus environment, CancellationToken cancellationToken)
+    {
+        if (environment.Info.VersionsUrl is not { } address)
+        {
+            return;
+        }
+
+        environment.Record(await _versions.ReadAsync(address, cancellationToken));
         Changed?.Invoke();
     }
 

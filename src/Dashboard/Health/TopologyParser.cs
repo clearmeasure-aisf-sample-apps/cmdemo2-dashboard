@@ -13,7 +13,8 @@ public sealed record TopologyParseResult(Topology? Topology, IReadOnlyList<strin
 
 /// <summary>
 /// Reads <c>topology.json</c>. Required: <c>environments</c> (an array), each environment's <c>name</c> and each
-/// node's <c>url</c>. Everything else is optional and gets a default; unknown fields are ignored.
+/// node's <c>url</c>. Everything else is optional and gets a default; unknown fields are ignored. An address that is
+/// present must be an absolute http or https address: the dashboard calls it or links to it.
 /// </summary>
 public static class TopologyParser
 {
@@ -51,7 +52,7 @@ public static class TopologyParser
             }
 
             var errors = new List<string>();
-            var system = ReadSystem(root);
+            var system = ReadSystem(root, errors);
             var generated = ReadTime(root, "generated");
             var environments = ReadEnvironments(root, errors);
             return errors.Count > 0
@@ -60,17 +61,19 @@ public static class TopologyParser
         }
     }
 
-    private static SystemInfo ReadSystem(JsonElement root)
+    private static SystemInfo ReadSystem(JsonElement root, List<string> errors)
     {
         var slug = string.Empty;
         string? name = null;
+        Uri? repository = null;
         if (root.TryGetProperty("system", out var system) && system.ValueKind == JsonValueKind.Object)
         {
             slug = ReadText(system, "slug") ?? string.Empty;
             name = ReadText(system, "name");
+            repository = ReadOptionalAddress(system, "repository", "system", errors);
         }
 
-        return new SystemInfo(slug, name ?? (slug.Length > 0 ? slug : "System"));
+        return new SystemInfo(slug, name ?? (slug.Length > 0 ? slug : "System"), repository);
     }
 
     private static List<EnvironmentInfo> ReadEnvironments(JsonElement root, List<string> errors)
@@ -99,8 +102,10 @@ public static class TopologyParser
                 continue;
             }
 
+            var versions = ReadOptionalAddress(element, "versionsUrl", path, errors);
+            var history = ReadOptionalAddress(element, "versionsHistoryUrl", path, errors);
             var deployables = ReadDeployables(element, path, errors);
-            environments.Add(new EnvironmentInfo(name, ReadText(element, "tier"), deployables));
+            environments.Add(new EnvironmentInfo(name, ReadText(element, "tier"), deployables, versions, history));
         }
 
         return environments;
@@ -124,7 +129,8 @@ public static class TopologyParser
                 continue;
             }
 
-            var frontDoor = ReadFrontDoor(element, path, errors);
+            var project = ReadOptionalAddress(element, "projectUrl", path, errors);
+            var frontDoor = ReadOptionalAddress(element, "frontDoor", path, errors);
             var nodes = ReadNodes(element, path, errors);
             deployables.Add(new DeployableInfo(
                 ReadText(element, "name") ?? "app",
@@ -132,15 +138,17 @@ public static class TopologyParser
                 ReadPath(element, "healthPath", DeployableInfo.DefaultHealthPath),
                 ReadPath(element, "alivePath", DeployableInfo.DefaultAlivePath),
                 ReadPath(element, "versionPath", DeployableInfo.DefaultVersionPath),
-                nodes));
+                nodes,
+                project));
         }
 
         return deployables;
     }
 
-    private static Uri? ReadFrontDoor(JsonElement deployable, string deployablePath, List<string> errors)
+    /// <summary>Null when the address is absent or <c>null</c> (fine); an error when it is anything but an address.</summary>
+    private static Uri? ReadOptionalAddress(JsonElement parent, string property, string parentPath, List<string> errors)
     {
-        if (!deployable.TryGetProperty("frontDoor", out var value) || value.ValueKind == JsonValueKind.Null)
+        if (!parent.TryGetProperty(property, out var value) || value.ValueKind == JsonValueKind.Null)
         {
             return null;
         }
@@ -148,7 +156,7 @@ public static class TopologyParser
         var address = ReadAddress(value);
         if (address is null)
         {
-            errors.Add($"{deployablePath}.frontDoor: not an absolute http or https address.");
+            errors.Add($"{parentPath}.{property}: not an absolute http or https address.");
         }
 
         return address;

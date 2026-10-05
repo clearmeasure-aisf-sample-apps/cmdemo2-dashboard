@@ -2,44 +2,53 @@
     var assessment = Deployable.Assess(out var expected);
     var serving = assessment.State.ToString().ToLowerInvariant();
     var disagrees = assessment.FrontDoor == FrontDoorAgreement.Disagrees;
+    var versions = Environment.AssessVersions(Deployable);
+    var hasVersionLine = versions is not null || Deployable.Info.ProjectUrl is not null || Environment.Info.VersionsHistoryUrl is not null;
 }
 <section class="deployable" aria-labelledby="@($"{IdPrefix}-title")">
     <header class="deployable__header">
         <h3 id="@($"{IdPrefix}-title")">@Deployable.Info.Name</h3>
-        <div class="serving serving--@serving @(disagrees ? "serving--disagrees" : null)">
-            <p class="serving__headline">
-                <svg class="serving__icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-                    @switch (assessment.State)
-                    {
-                        case ServingState.Primary:
-                            <path d="M3 8.5l3.2 3.2L13 4.6" />
-                            break;
-                        case ServingState.FailedOver:
-                            <path d="M2 5.5h11M10 2.5l3 3-3 3M14 10.5H3M6 7.5l-3 3 3 3" />
-                            break;
-                        case ServingState.Down:
-                            <path d="M4 4l8 8M12 4l-8 8" />
-                            break;
-                        default:
-                            <path d="M3.9 8h.2M7.9 8h.2M11.9 8h.2" />
-                            break;
-                    }
-                </svg>
-                <strong>@assessment.Headline</strong>
-            </p>
-            @if (assessment.FailoverDetail is { } detail)
-            {
-                <p class="serving__detail">@detail</p>
-            }
-            @if (assessment.FrontDoorText is { } frontDoor)
-            {
-                <p class="serving__frontdoor">
-                    @if (disagrees)
-                    {
-                        <StateIcon State="HealthState.Unhealthy" />
-                    }
-                    <span>@frontDoor</span>
+        <div class="deployable__status">
+            <div class="serving serving--@serving @(disagrees ? "serving--disagrees" : null)">
+                <p class="serving__headline">
+                    <svg class="serving__icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+                        @switch (assessment.State)
+                        {
+                            case ServingState.Primary:
+                                <path d="M3 8.5l3.2 3.2L13 4.6" />
+                                break;
+                            case ServingState.FailedOver:
+                                <path d="M2 5.5h11M10 2.5l3 3-3 3M14 10.5H3M6 7.5l-3 3 3 3" />
+                                break;
+                            case ServingState.Down:
+                                <path d="M4 4l8 8M12 4l-8 8" />
+                                break;
+                            default:
+                                <path d="M3.9 8h.2M7.9 8h.2M11.9 8h.2" />
+                                break;
+                        }
+                    </svg>
+                    <strong>@assessment.Headline</strong>
                 </p>
+                @if (assessment.FailoverDetail is { } detail)
+                {
+                    <p class="serving__detail">@detail</p>
+                }
+                @if (assessment.FrontDoorText is { } frontDoor)
+                {
+                    <p class="serving__frontdoor">
+                        @if (disagrees)
+                        {
+                            <StateIcon State="HealthState.Unhealthy" />
+                        }
+                        <span>@frontDoor</span>
+                    </p>
+                }
+            </div>
+            @if (hasVersionLine)
+            {
+                <VersionLine Assessment="versions" DeployableName="@Deployable.Info.Name" EnvironmentName="@Environment.Name"
+                             ProjectUrl="Deployable.Info.ProjectUrl" HistoryUrl="Environment.Info.VersionsHistoryUrl" />
             }
         </div>
     </header>
@@ -66,6 +75,10 @@
 @code {
     [Parameter, EditorRequired]
     public DeployableStatus Deployable { get; set; } = default!;
+
+    /// <summary>The environment of the deployable: it holds the versions pinned in Git.</summary>
+    [Parameter, EditorRequired]
+    public EnvironmentStatus Environment { get; set; } = default!;
 
     /// <summary>Prefix of the element ids of this section, unique on the page.</summary>
     [Parameter, EditorRequired]

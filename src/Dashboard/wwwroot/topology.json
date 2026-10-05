@@ -1,12 +1,15 @@
 {
-  "system": { "slug": "cmdemo2", "name": "CM demo 2 multi-region" },
+  "system": { "slug": "cmdemo2", "name": "CM demo 2 multi-region", "repository": "https://github.com/example-org/cmdemo2-system" },
   "generated": "2026-10-04T22:00:00Z",
   "environments": [
     {
       "name": "tdd", "tier": "nonprod",
+      "versionsUrl": "https://raw.githubusercontent.com/example-org/cmdemo2-system/main/environments/tdd/versions.json",
+      "versionsHistoryUrl": "https://github.com/example-org/cmdemo2-system/commits/main/environments/tdd/versions.json",
       "deployables": [
         {
           "name": "ui",
+          "projectUrl": "https://example.octopus.app/app#/Spaces-1/projects/cmdemo2-ui",
           "frontDoor": "https://cmdemo2-tdd-abc123.z01.azurefd.net",
           "healthPath": "/_healthcheck", "alivePath": "/alive", "versionPath": "/_version",
           "nodes": [
@@ -17,9 +20,12 @@
     },
     {
       "name": "uat", "tier": "nonprod",
+      "versionsUrl": "https://raw.githubusercontent.com/example-org/cmdemo2-system/main/environments/uat/versions.json",
+      "versionsHistoryUrl": "https://github.com/example-org/cmdemo2-system/commits/main/environments/uat/versions.json",
       "deployables": [
         {
           "name": "ui",
+          "projectUrl": "https://example.octopus.app/app#/Spaces-1/projects/cmdemo2-ui",
           "frontDoor": "https://cmdemo2-uat-def456.z01.azurefd.net",
           "healthPath": "/_healthcheck", "alivePath": "/alive", "versionPath": "/_version",
           "nodes": [

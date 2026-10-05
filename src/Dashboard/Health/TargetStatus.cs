@@ -45,6 +45,8 @@ public sealed class TargetStatus(TargetKind kind, string name, Uri url, string? 
     }
 
     public NodeHealth ToNodeHealth() => new(Name, Region, IsPrimary, State);
+
+    public NodeVersion ToNodeVersion() => new(Region ?? Name, State, Version);
 }
 
 /// <summary>A deployable of an environment with the state of its endpoints.</summary>
@@ -80,4 +82,46 @@ public sealed class DeployableStatus
     }
 }
 
-public sealed record EnvironmentStatus(string Name, string? Tier, IReadOnlyList<DeployableStatus> Deployables);
+/// <summary>An environment with the state of its deployables and the versions the deployments pinned for it in Git.</summary>
+public sealed class EnvironmentStatus
+{
+    public EnvironmentStatus(EnvironmentInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        Info = info;
+        Deployables = [.. info.Deployables.Select(deployable => new DeployableStatus(deployable))];
+        Pinned = info.VersionsUrl is null ? PinnedVersions.NotTracked : PinnedVersions.Pending;
+    }
+
+    public EnvironmentInfo Info { get; }
+
+    public string Name => Info.Name;
+
+    public string? Tier => Info.Tier;
+
+    public IReadOnlyList<DeployableStatus> Deployables { get; }
+
+    /// <summary>The last reading of the environment's <c>versions.json</c>; a failed reading replaces a good one.</summary>
+    public PinnedVersions Pinned { get; private set; }
+
+    /// <summary>True when a deployable of this environment has a node that runs another version than the pinned one.</summary>
+    public bool VersionsDiffer => Deployables.Any(deployable => AssessVersions(deployable) is { Differs: true });
+
+    public void Record(PinnedVersions pinned)
+    {
+        ArgumentNullException.ThrowIfNull(pinned);
+        Pinned = pinned;
+    }
+
+    /// <summary>
+    /// The pinned version of a deployable next to the versions its nodes run; null when the topology names no
+    /// <c>versions.json</c> for this environment.
+    /// </summary>
+    public VersionAssessment? AssessVersions(DeployableStatus deployable)
+    {
+        ArgumentNullException.ThrowIfNull(deployable);
+        return Info.VersionsUrl is null
+            ? null
+            : VersionAssessment.Assess(Pinned, deployable.Info.Name, deployable.Nodes.Select(node => node.ToNodeVersion()));
+    }
+}

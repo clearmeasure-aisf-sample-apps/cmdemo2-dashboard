@@ -1,6 +1,7 @@
 @implements IAsyncDisposable
 @inject TopologyLoader Loader
 @inject NodeProber Prober
+@inject PinnedVersionsReader Versions
 @inject TimeProvider Time
 @inject IJSRuntime JS
 
@@ -18,6 +19,14 @@
                 <StateIcon State="SummaryState" />
                 <span>@SummaryText</span>
             </p>
+            @* The summary above stays about health; this line is there only while versions differ somewhere. *@
+            @if (_monitor?.VersionSummary.Text is { } versionsDiffer)
+            {
+                <p class="summary-versions" role="status">
+                    <VersionIcon State="VersionState.Differs" />
+                    <span>@versionsDiffer</span>
+                </p>
+            }
             <p class="refresh">
                 <span class="polling polling--@PollingState.ToLowerInvariant()">@PollingState</span>
                 <span>
@@ -90,7 +99,7 @@
                 }
                 @foreach (var deployable in environment.Deployables)
                 {
-                    <DeployableSection @key="deployable" Deployable="deployable" Zone="Zone"
+                    <DeployableSection @key="deployable" Deployable="deployable" Environment="environment" Zone="Zone"
                                        IdPrefix="@($"{environmentId}-app-{deployableIndex++}")" />
                 }
             </section>
@@ -125,7 +134,15 @@
     {
         if (loaded.Topology.System.Slug is { Length: > 0 } slug)
         {
-            <span>System @slug</span>
+            if (loaded.Topology.System.Repository is { } repository)
+            {
+                <span>System <a href="@repository.AbsoluteUri" target="_blank" rel="noopener"
+                                title="The system repository on GitHub (opens in a new tab)">@slug</a></span>
+            }
+            else
+            {
+                <span>System @slug</span>
+            }
         }
 
         if (loaded.Topology.Generated is { } generated)
@@ -266,7 +283,7 @@
                 previous.Changed -= OnMonitorChanged;
             }
 
-            _monitor = result.Topology is { } topology ? new DashboardMonitor(topology, Prober, Time) : null;
+            _monitor = result.Topology is { } topology ? new DashboardMonitor(topology, Prober, Versions, Time) : null;
             _errors = result.Topology is null ? result.Errors : null;
             if (_monitor is { } monitor)
             {
