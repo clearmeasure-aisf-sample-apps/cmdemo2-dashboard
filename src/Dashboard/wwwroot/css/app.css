@@ -679,6 +679,246 @@ main {
   opacity: 0.7;
 }
 
+/* ---------- Views: Health and Runtime ---------- */
+
+.views {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: -0.75rem;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.views__tab {
+  min-height: 2.5rem;
+  margin-bottom: -1px;
+  padding: 0.35rem 1rem;
+  border: 1px solid transparent;
+  border-bottom: 3px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: none;
+  color: var(--ink-secondary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.views__tab:hover {
+  color: var(--ink);
+}
+
+/* The current view: a heavy underline and the ink colour, not the colour alone. */
+.views__tab[aria-current="page"] {
+  border-color: var(--hairline) var(--hairline) var(--ink);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+/* ---------- Runtime view ---------- */
+
+.runtime {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.runtime__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+
+.runtime__environments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.button--selected,
+.runtime__fit[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--page);
+}
+
+.runtime__fit {
+  margin-left: auto;
+}
+
+/* The diagram is a sheet of paper in both themes: PlantUML drew it for a light background. Wider than the page's
+   column where the window allows, and scrolling sideways inside its own frame where it does not. */
+.runtime__canvas {
+  margin-inline: calc(-1 * max(0px, min(50vw - 50% - 1rem, 25rem)));
+  padding: 0.5rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color-scheme: light;
+}
+
+.runtime__canvas[hidden] {
+  display: none;
+}
+
+.runtime__svg svg {
+  display: block;
+  max-width: none;
+}
+
+.runtime__canvas--fit .runtime__svg svg {
+  width: 100%;
+  min-width: var(--rt-min-width, 0);
+  height: auto;
+}
+
+.runtime__missing {
+  padding: 0.4rem 0.75rem;
+  border-left: 4px solid var(--serious);
+  background: var(--serious-wash);
+  font-size: 0.9rem;
+}
+
+.runtime-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 2rem;
+  font-size: 0.85rem;
+}
+
+.runtime-legend ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0;
+  list-style: none;
+}
+
+.runtime-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.runtime-legend__swatch {
+  flex: none;
+  padding: 1px;
+  border-radius: 4px;
+  background: #ffffff;
+}
+
+/* The diagram's states. PlantUML writes its colours as attributes and inline styles, so these rules are !important.
+   The diagram is always light (see .runtime__canvas): these colours are not themed. Every state also has a word in
+   the diagram, and the lines differ in dash as well as colour. */
+.runtime-svg text {
+  font-family: var(--font);
+}
+
+.rt-node > .rt-box,
+.rt-node > .rt-box-line,
+.rt-region > .rt-frame,
+.rt-edge > .rt-edge-line,
+.rt-edge > .rt-edge-head {
+  transition: fill 0.3s, stroke 0.3s, stroke-width 0.3s;
+}
+
+.rt-node[data-rt-state="healthy"] > .rt-box { fill: #24609c !important; stroke: #2e7d32 !important; stroke-width: 4px !important; stroke-dasharray: none !important; }
+.rt-node[data-rt-state="unhealthy"] > .rt-box { fill: #b71c1c !important; stroke: #4a0000 !important; stroke-width: 4px !important; stroke-dasharray: 9 5 !important; }
+.rt-node[data-rt-state="unreachable"] > .rt-box { fill: #5f5f5f !important; stroke: #111111 !important; stroke-width: 4px !important; stroke-dasharray: 2 4 !important; }
+.rt-node[data-rt-state="checking"] > .rt-box { fill: #607d8b !important; stroke: #37474f !important; stroke-width: 2px !important; stroke-dasharray: 6 4 !important; }
+.rt-node[data-rt-state="neutral"] > .rt-box { fill: #455a64 !important; stroke: #263238 !important; stroke-width: 1px !important; stroke-dasharray: none !important; }
+.rt-node[data-rt-state] > .rt-box-line { stroke: rgba(255, 255, 255, 0.6) !important; }
+
+.rt-region[data-rt-state="serving"] > .rt-frame { fill: #eef7e6 !important; stroke: #2e7d32 !important; stroke-width: 2.5px !important; stroke-dasharray: none !important; }
+.rt-region[data-rt-state="standby"] > .rt-frame { fill: #f7f8f9 !important; stroke: #78909c !important; stroke-width: 1.5px !important; stroke-dasharray: 7 5 !important; }
+.rt-region[data-rt-state="down"] > .rt-frame { fill: #fdecec !important; stroke: #b71c1c !important; stroke-width: 2.5px !important; stroke-dasharray: 9 5 !important; }
+.rt-region[data-rt-state="checking"] > .rt-frame { fill: #fafafa !important; stroke: #90a4ae !important; stroke-dasharray: 3 4 !important; }
+
+.rt-edge[data-rt-state="active"] > .rt-edge-line { stroke: #2e7d32 !important; stroke-width: 3.5px !important; stroke-dasharray: none !important; }
+.rt-edge[data-rt-state="active"] > .rt-edge-head { fill: #2e7d32 !important; stroke: #2e7d32 !important; }
+.rt-edge[data-rt-state="idle"] > .rt-edge-line { stroke: #90a4ae !important; stroke-width: 1.5px !important; stroke-dasharray: 2 5 !important; }
+.rt-edge[data-rt-state="idle"] > .rt-edge-head { fill: #90a4ae !important; stroke: #90a4ae !important; }
+.rt-edge[data-rt-state="down"] > .rt-edge-line { stroke: #b71c1c !important; stroke-width: 2.5px !important; stroke-dasharray: 9 5 !important; }
+.rt-edge[data-rt-state="down"] > .rt-edge-head { fill: #b71c1c !important; stroke: #b71c1c !important; }
+.rt-edge[data-rt-state="checking"] > .rt-edge-line { stroke: #78909c !important; stroke-dasharray: 3 4 !important; }
+
+/* Tiles: drawn on the node's box, white on its colour. */
+.rt-tile text { fill: #ffffff; }
+.rt-badge__back { fill: #ffffff; }
+.rt-badge__text { font-weight: 700; }
+.rt-tile--healthy .rt-badge__text { fill: #1b5e20; }
+.rt-tile--unhealthy .rt-badge__text { fill: #b71c1c; }
+.rt-tile--unreachable .rt-badge__text { fill: #111111; }
+.rt-tile--checking .rt-badge__text,
+.rt-tile--neutral .rt-badge__text { fill: #37474f; }
+.rt-tile--healthy .rt-badge__icon .rt-icon__fill { fill: #2e7d32; }
+.rt-tile--unhealthy .rt-badge__icon .rt-icon__fill { fill: #b71c1c; }
+.rt-tile--unreachable .rt-badge__icon .rt-icon__fill { fill: #111111; }
+.rt-line--strong .rt-row__text { font-weight: 700; }
+.rt-tile .rt-line--muted .rt-row__text { fill: rgba(255, 255, 255, 0.82); }
+.rt-line--serving .rt-row__text,
+.rt-line--differs .rt-row__text,
+.rt-line--warn .rt-row__text { font-weight: 700; }
+.rt-tile .rt-line--differs .rt-row__text,
+.rt-tile .rt-line--warn .rt-row__text { fill: #ffe0b2; }
+
+.rt-icon__fill { fill: #ffffff; }
+.rt-icon__mark,
+.rt-icon__line,
+.rt-icon__ring {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.rt-icon__fill + .rt-icon__mark { stroke: #ffffff; }
+.rt-badge__icon .rt-icon__ring,
+.rt-badge__icon .rt-icon__line { stroke: #37474f; }
+.rt-row__icon .rt-icon__fill { fill: #ffffff; }
+.rt-row__icon .rt-icon__fill + .rt-icon__mark { stroke: #24609c; }
+.rt-tile--unhealthy .rt-row__icon .rt-icon__fill + .rt-icon__mark { stroke: #b71c1c; }
+.rt-line--differs .rt-icon__line,
+.rt-line--warn .rt-icon__fill { stroke: #ffe0b2; fill: none; }
+.rt-line--warn .rt-icon__fill { fill: #ffe0b2; }
+.rt-line--warn .rt-icon__mark { stroke: #b71c1c; }
+
+.rt-bar--healthy { fill: #a5d6a7; }
+.rt-bar--unhealthy { fill: #ffcc80; }
+.rt-bar--unreachable { fill: #eeeeee; }
+.rt-bar--empty { fill: rgba(255, 255, 255, 0.3); }
+
+/* A region's mark: a pill with an icon and words. */
+.rt-mark__text { fill: #37474f; font-weight: 700; }
+.rt-mark__back { fill: #eceff1; }
+.rt-mark--serving .rt-mark__back { fill: #2e7d32; }
+.rt-mark--down .rt-mark__back { fill: #b71c1c; }
+.rt-mark--serving .rt-mark__text,
+.rt-mark--down .rt-mark__text { fill: #ffffff; }
+.rt-mark--serving .rt-icon__fill,
+.rt-mark--down .rt-icon__fill { fill: #ffffff; }
+.rt-mark--serving .rt-icon__mark { stroke: #2e7d32; }
+.rt-mark--down .rt-icon__mark { stroke: #b71c1c; }
+.rt-mark--standby .rt-icon__ring,
+.rt-mark--standby .rt-icon__line,
+.rt-mark--checking .rt-icon__ring,
+.rt-mark--checking .rt-icon__line { stroke: #37474f; }
+.rt-mark--neutral .rt-mark__text { fill: #607d8b; font-weight: 400; font-style: italic; }
+
+/* A relationship's number line: a dashed frame keeps the place of the number. */
+.rt-number__hook { fill: #ffffff; stroke: #78909c; stroke-width: 1; stroke-dasharray: 3 3; }
+.rt-number__text { fill: #37474f; }
+.rt-number__value { font-weight: 700; }
+.rt-number__role { fill: #546e7a; }
+.rt-edge[data-rt-state="active"] .rt-number__role,
+.rt-edge[data-rt-state="active"] .rt-number__text { fill: #1b5e20; }
+.rt-edge[data-rt-state="down"] .rt-number__role { fill: #b71c1c; }
+
+/* The legend's swatches use the same classes, at a smaller line. */
+.runtime-legend .rt-box { stroke-width: 2.5px !important; }
+.runtime-legend .rt-frame { stroke-width: 1.5px !important; }
+.runtime-legend .rt-edge-line { stroke: #78909c; }
+
 /* ---------- Messages ---------- */
 
 .empty {

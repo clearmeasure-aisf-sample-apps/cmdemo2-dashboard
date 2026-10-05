@@ -4,6 +4,7 @@
 @inject PinnedVersionsReader Versions
 @inject TimeProvider Time
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <PageTitle>@PageTitleText</PageTitle>
 
@@ -70,8 +71,22 @@
     <p id="probe-help" class="help">@ProbeHelp</p>
 </header>
 
+@* Two renderings of one monitor: the checks, the interval and the probe above apply to both. The address keeps the
+   choice (#runtime, #runtime/<environment>), so a link opens the view. *@
+<nav class="views" aria-label="Views">
+    <button type="button" class="views__tab" aria-current="@(_address.View == DashboardView.Health ? "page" : null)"
+            @onclick="() => ShowAsync(ViewAddress.Health)">Health</button>
+    <button type="button" class="views__tab" aria-current="@(_address.View == DashboardView.Runtime ? "page" : null)"
+            @onclick="() => ShowAsync(new ViewAddress(DashboardView.Runtime, _address.Environment ?? _runtimeEnvironment))">Runtime</button>
+</nav>
+
 <main>
-    @if (_monitor is { } monitor)
+    @if (_monitor is { } runtimeMonitor && _address.View == DashboardView.Runtime)
+    {
+        <RuntimeView Monitor="runtimeMonitor" Environment="@_address.Environment" EnvironmentChanged="OnRuntimeEnvironmentChangedAsync"
+                     Page="PageAddress" Zone="Zone" />
+    }
+    else if (_monitor is { } monitor)
     {
         if (monitor.Environments.Count == 0)
         {
@@ -175,9 +190,14 @@
     private bool _loading;
     private ProbeKind _probe = ProbeKind.Health;
     private IJSObjectReference? _visibility;
+    private IJSObjectReference? _location;
     private DotNetObjectReference<App>? _self;
+    private ViewAddress _address = ViewAddress.Health;
+    private string? _runtimeEnvironment;
 
     private TimeZoneInfo Zone => Time.LocalTimeZone;
+
+    private Uri PageAddress => new(Navigation.BaseUri);
 
     private int IntervalSeconds => (int)_poller.Interval.TotalSeconds;
 
@@ -207,6 +227,14 @@
         StateHasChanged();
     }
 
+    /// <summary>Called by <c>js/location.js</c> when the address's hash changes (a link, a typed address).</summary>
+    [JSInvokable]
+    public void OnHashChanged(string hash)
+    {
+        Apply(ViewAddress.Parse(hash));
+        StateHasChanged();
+    }
+
     public async ValueTask DisposeAsync()
     {
         await _stopping.CancelAsync();
@@ -215,12 +243,17 @@
             monitor.Changed -= OnMonitorChanged;
         }
 
-        if (_visibility is { } visibility)
+        foreach (var module in new[] { _visibility, _location })
         {
+            if (module is null)
+            {
+                continue;
+            }
+
             try
             {
-                await visibility.InvokeVoidAsync("unsubscribe");
-                await visibility.DisposeAsync();
+                await module.InvokeVoidAsync("unsubscribe");
+                await module.DisposeAsync();
             }
             catch (JSDisconnectedException)
             {
@@ -250,7 +283,31 @@
         _visibility = await JS.InvokeAsync<IJSObjectReference>("import", "./js/visibility.js");
         _self = DotNetObjectReference.Create(this);
         OnVisibilityChanged(await _visibility.InvokeAsync<bool>("subscribe", _self));
+        _location = await JS.InvokeAsync<IJSObjectReference>("import", "./js/location.js");
+        OnHashChanged(await _location.InvokeAsync<string>("subscribe", _self));
     }
+
+    private void Apply(ViewAddress address)
+    {
+        _address = address;
+        if (address.Environment is { } environment)
+        {
+            _runtimeEnvironment = environment;
+        }
+    }
+
+    /// <summary>Shows a view and puts it into the address, without a history entry per click.</summary>
+    private async Task ShowAsync(ViewAddress address)
+    {
+        Apply(address);
+        if (_location is { } location)
+        {
+            await location.InvokeVoidAsync("setHash", address.ToHash());
+        }
+    }
+
+    private Task OnRuntimeEnvironmentChangedAsync(string environment) =>
+        ShowAsync(new ViewAddress(DashboardView.Runtime, environment));
 
     private Task CheckAsync(CancellationToken cancellationToken) =>
         _monitor?.CheckAllAsync(_probe, cancellationToken) ?? Task.CompletedTask;
