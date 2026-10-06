@@ -60,6 +60,8 @@
             reachable when the health check of a web app that uses it passes. Calls per minute are the last minute as each
             web app counts it (its <code>/_telemetry</code>): requests Front Door forwarded, Front Door's health probes and
             SQL commands; a dash where a web app reports none. "Generate traffic" at the bottom of the page makes them move.
+            The small line next to a number is its trend over the last checks of this page. An underlined number or name
+            is a link: it opens the Azure portal or Octopus Deploy in a new tab, which ask you to sign in.
         </p>
         @if (_diagram is { IsValid: false } broken)
         {
@@ -94,6 +96,24 @@
             <p class="runtime__missing" role="status">
                 The diagram lacks @string.Join(", ", _missing): the manifest and the SVG of this deployment do not match.
             </p>
+        }
+
+        @* Under the diagram: what is known about the shown environment beyond its health (its resources in the Azure
+           portal, the code its deployables run, how they were delivered). Nothing where no source answered. *@
+        @if (Shown is { } facts)
+        {
+            <section class="runtime__facts" aria-label="@($"Code and delivery of {facts.Name}")">
+                <EnvironmentLinks Links="facts.Info.Links" Environment="@facts.Name" />
+                @{
+                    var deployableIndex = 0;
+                }
+                @foreach (var deployable in facts.Deployables)
+                {
+                    <DeployableFacts @key="deployable" Monitor="Monitor" Environment="facts" Deployable="deployable"
+                                     IdPrefix="@($"runtime-app-{deployableIndex++}")" Zone="Zone" Now="Now" />
+                }
+                <EnvironmentDelivery Monitor="Monitor" Environment="facts" IdPrefix="runtime" Zone="Zone" Now="Now" />
+            </section>
         }
 
         <RuntimeLegend />
@@ -134,6 +154,15 @@
 
     [Parameter, EditorRequired]
     public TimeZoneInfo Zone { get; set; } = default!;
+
+    /// <summary>The moment of this rendering: "2 h ago" is counted from it.</summary>
+    [Parameter]
+    public DateTimeOffset Now { get; set; }
+
+    /// <summary>The monitor's environment of the diagram that is shown; null while none is, or when the topology has none of that name.</summary>
+    private EnvironmentStatus? Shown => _diagram is { IsValid: true } diagram
+        ? Monitor.Environments.FirstOrDefault(status => string.Equals(status.Name, diagram.Manifest!.Environment, StringComparison.OrdinalIgnoreCase))
+        : null;
 
     private RuntimeIndexEntry? Current => _index?.Index?.Environments is { Count: > 0 } entries
         ? entries.FirstOrDefault(entry => string.Equals(entry.Name, Environment, StringComparison.OrdinalIgnoreCase)) ?? entries[0]
@@ -204,7 +233,7 @@
             return;
         }
 
-        var environment = Monitor.Environments.FirstOrDefault(status => string.Equals(status.Name, diagram.Manifest!.Environment, StringComparison.OrdinalIgnoreCase));
+        var environment = Shown;
         var payload = RuntimePayloadBuilder.Build(diagram.Manifest!, environment, Page, Zone).ToJson();
         if (payload == _lastPayload)
         {

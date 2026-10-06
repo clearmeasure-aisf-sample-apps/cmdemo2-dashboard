@@ -24,6 +24,16 @@
   --serious-wash: #fdeee7;
   --critical-wash: #fbe9e9;
 
+  /* The language bar of the "Code" card: identity, not state. Five hues in a fixed order (the largest language takes
+     the first), checked as neighbours for colour-vision deficiencies in both themes; the list under the bar names
+     every language in words, so no colour has to be told apart. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-other: #898781;
+
   --radius: 10px;
   --gap: 1rem;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -44,6 +54,12 @@
     --good-wash: #12260f;
     --serious-wash: #33201a;
     --critical-wash: #331a1a;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
   }
 }
 
@@ -290,8 +306,9 @@ main {
 
 .environment__header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.3rem 0.6rem;
 }
 
 .deployable {
@@ -650,6 +667,301 @@ main {
   overflow-wrap: anywhere;
 }
 
+/* The web app's own numbers under the checks: the last minute, and its process. Three narrow columns, the number with
+   a trend over two. */
+.tile__block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.tile__block-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.2rem 0.6rem;
+}
+
+.tile__label {
+  margin: 0;
+  color: var(--ink-secondary);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.tile__uptime {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--ink-secondary);
+  font-size: 0.8rem;
+}
+
+/* A process that started within the last minutes: marked with the warning shape and its words, not colour alone. */
+.tile__uptime--restarted {
+  padding: 0.05rem 0.5rem 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--serious-wash);
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.tile__uptime .state-icon,
+.metrics .state-icon,
+.facts .state-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.metrics--compact {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem 0.75rem;
+}
+
+.metrics--compact dt {
+  font-size: 0.72rem;
+}
+
+.metrics--compact dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.1rem 0.4rem;
+  font-size: 0.94rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.metrics__wide {
+  grid-column: span 2;
+}
+
+.metrics__warn dd {
+  font-weight: 700;
+}
+
+.unit {
+  margin-left: 0.15em;
+  color: var(--ink-secondary);
+  font-size: 0.82em;
+  font-weight: 500;
+}
+
+/* A number or a name that leads somewhere: the ink of the text with the link's underline, so a tile of numbers does
+   not turn blue. The title says where it goes. */
+.deep {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--link);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.2em;
+}
+
+.deep:hover {
+  color: var(--link);
+}
+
+.deep--badge {
+  border-radius: 999px;
+  text-decoration: none;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.deep--badge:hover {
+  color: inherit;
+  box-shadow: 0 0 0 1.5px var(--link);
+}
+
+/* ---------- Trend (sparkline) ---------- */
+
+.trend {
+  flex: none;
+  overflow: visible;
+}
+
+.trend__line {
+  fill: none;
+  stroke: var(--ink-secondary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend__now {
+  fill: var(--focus);
+}
+
+/* ---------- Cards: code and delivery ---------- */
+
+.facts-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
+  gap: var(--gap);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  padding: 0.8rem 1rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+.card__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.5rem;
+  font-size: 0.95rem;
+}
+
+.card__context {
+  color: var(--ink-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.card__lead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  color: var(--ink-secondary);
+}
+
+.card__lead strong,
+.card__lead code {
+  color: var(--ink);
+}
+
+.card__reason {
+  color: var(--ink-secondary);
+}
+
+.code-size {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.code-size__total {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The share of each language as a part of one bar, with a gap of the surface between the parts. */
+.langbar {
+  display: flex;
+  gap: 2px;
+  height: 0.6rem;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.langbar__part {
+  flex: 1 1 0;
+  min-width: 3px;
+  background: var(--series-other);
+}
+
+.langbar__part--0 { background: var(--series-other); }
+.langbar__part--1 { background: var(--series-1); }
+.langbar__part--2 { background: var(--series-2); }
+.langbar__part--3 { background: var(--series-3); }
+.langbar__part--4 { background: var(--series-4); }
+.langbar__part--5 { background: var(--series-5); }
+
+.langbar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  padding: 0;
+  list-style: none;
+  font-size: 0.82rem;
+}
+
+.langbar__legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.langbar__swatch {
+  flex: none;
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 2px;
+}
+
+.langbar__percent {
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.3rem 0.9rem;
+}
+
+.facts > div {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+}
+
+.facts dt {
+  color: var(--ink-secondary);
+  font-size: 0.82rem;
+}
+
+.facts dd {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.facts dd .state-icon {
+  margin-right: 0.3rem;
+  vertical-align: -0.08em;
+}
+
+.facts__warn dd {
+  font-weight: 700;
+}
+
+/* A fact of several pieces (a version and when, who and why): a gap between them, and they wrap as wholes first. */
+.facts__parts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.6rem;
+}
+
+/* The environment's resources in the Azure portal: quiet links at the end of its heading. */
+.resource-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+  margin-left: auto;
+  font-size: 0.85rem;
+}
+
+.resource-links a {
+  white-space: nowrap;
+}
+
+.resource-links a::after {
+  content: " \2197\FE0E";
+}
+
 /* ---------- History strip ---------- */
 
 .history {
@@ -779,6 +1091,17 @@ main {
   font-size: 0.9rem;
 }
 
+/* Under the diagram: the shown environment's resources, code and delivery. */
+.runtime__facts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.runtime__facts .resource-links {
+  margin-left: 0;
+}
+
 .runtime-legend {
   display: flex;
   flex-wrap: wrap;
@@ -905,6 +1228,25 @@ main {
 .rt-mark--checking .rt-icon__line { stroke: #37474f; }
 .rt-mark--neutral .rt-mark__text { fill: #607d8b; font-weight: 400; font-style: italic; }
 
+/* Links in the diagram: real <a> elements. Underlined, because the text keeps the colour of its place; the focus ring
+   is drawn around the words. */
+.runtime-svg a.rt-link { cursor: pointer; }
+.runtime-svg a.rt-link text,
+.runtime-svg text a.rt-link { text-decoration: underline; text-underline-offset: 2px; }
+.runtime-svg a.rt-link:hover text,
+.runtime-svg text a.rt-link:hover { text-decoration-thickness: 2px; }
+.runtime-svg a.rt-link:focus-visible { outline: 3px solid #ffb300; outline-offset: 2px; border-radius: 3px; }
+.runtime-svg a.rt-link:focus-visible .rt-badge__back { stroke: #ffb300; stroke-width: 3px; }
+
+/* Trends: a thin line after the number, the last reading as a dot. White on a tile, slate on the sheet. */
+.rt-trend__line { fill: none; stroke: #546e7a; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.rt-trend__now { fill: #24609c; }
+.rt-trend__hit { fill: transparent; stroke: none; }
+.rt-tile .rt-trend__line { stroke: rgba(255, 255, 255, 0.85); }
+.rt-tile .rt-trend__now { fill: #ffffff; }
+.rt-edge[data-rt-state="active"] .rt-trend__line { stroke: #2e7d32; }
+.rt-edge[data-rt-state="active"] .rt-trend__now { fill: #1b5e20; }
+
 /* A relationship's number line: a dashed frame keeps the place of the number. */
 .rt-number__hook { fill: #ffffff; stroke: #78909c; stroke-width: 1; stroke-dasharray: 3 3; }
 .rt-number--counted .rt-number__hook { stroke: #455a64; stroke-dasharray: none; }
@@ -953,10 +1295,117 @@ main {
 
 /* ---------- Footer ---------- */
 
+/* ---------- Events: what just happened ---------- */
+
+.events {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.events__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 1rem;
+}
+
+.events__title {
+  font-size: 1rem;
+}
+
+.events__scope {
+  color: var(--ink-secondary);
+  font-size: 0.85rem;
+}
+
+.events__failover {
+  font-size: 0.9rem;
+}
+
+/* The log scrolls inside its own frame, so a long morning does not push the page down. */
+.events__log {
+  max-height: 13.5rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.events__log .empty {
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.events__list {
+  display: grid;
+  grid-template-columns: max-content max-content max-content minmax(0, 1fr);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.88rem;
+}
+
+.event {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: baseline;
+  gap: 0 0.7rem;
+  padding: 0.3rem 0.8rem;
+}
+
+.event + .event {
+  border-top: 1px solid var(--hairline);
+}
+
+.event__time {
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.event__mark {
+  align-self: center;
+  display: inline-flex;
+}
+
+.event__mark .state-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.event__where {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.event__text {
+  overflow-wrap: anywhere;
+}
+
+.event--problem .event__text,
+.event--warning .event__text {
+  font-weight: 600;
+}
+
+@media (max-width: 40rem) {
+  .events__list {
+    grid-template-columns: max-content max-content minmax(0, 1fr);
+  }
+
+  .event__text {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ---------- Traffic (the button at the bottom) ---------- */
 
 .traffic {
-  margin: 1.5rem 0 1rem;
+  margin: 0 0 1rem;
   padding-top: 0.9rem;
   border-top: 1px solid var(--hairline);
 }
@@ -1036,5 +1485,16 @@ main {
 
   .history__bar--empty {
     fill: GrayText;
+  }
+
+  .card,
+  .events__log,
+  .langbar__part,
+  .langbar__swatch {
+    border: 1px solid CanvasText;
+  }
+
+  .trend__line {
+    stroke: CanvasText;
   }
 }

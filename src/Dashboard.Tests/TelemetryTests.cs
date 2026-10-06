@@ -44,7 +44,10 @@ public class TelemetryTests
     {
         var snapshot = TelemetrySnapshot.Parse(Answer, Now);
 
-        Assert.Equal(new TelemetrySnapshot(12, 10, 2, 0, 85, 4, 6, 30, 12, 1, Now), snapshot);
+        Assert.Equal(
+            new TelemetrySnapshot(12, 10, 2, 0, 85, 4, 6, 30, 12, 1, Now) { StartedAt = new DateTimeOffset(2026, 10, 5, 23, 0, 0, TimeSpan.Zero) },
+            snapshot);
+        Assert.Null(snapshot!.Process);
     }
 
     [Theory]
@@ -169,8 +172,87 @@ public class TelemetryTests
         var payload = RuntimePayloadBuilder.Build(Manifest(), Uat(Snapshot(errors: 2), Snapshot(frontDoor: 0, direct: 0, sql: 3)), Page, TimeZoneInfo.Utc);
 
         var primary = payload.Nodes.Single(tile => tile.Alias == "app_ui_primary");
-        Assert.Contains(new RuntimeTileLine("12 req/min · p95 85 ms · 2 errors", "warn"), primary.Lines);
+        Assert.Equal(
+            [("12 req/min · p95 85 ms", "plain"), ("2 errors", "warn")],
+            primary.Lines.Skip(2).Take(2).Select(line => (line.Text, line.Tone)));
         Assert.Equal("33 queries/min", payload.Nodes.Single(tile => tile.Alias == "sqldb").Facts);
+    }
+
+    private static TelemetrySnapshot Split(int requests, int background) =>
+        Snapshot(sql: requests + background) with { SqlRequests = requests, SqlBackground = background };
+
+    [Fact]
+    public void TheSqlCommandsOfRequestsAndOfTheBackgroundAreReadWhereTheAppTellsThemApart()
+    {
+        var split = TelemetrySnapshot.Parse("""{ "requests": { "perMinute": 12 }, "sql": { "perMinute": 117, "requests": 62, "background": 55, "p95Ms": 12 } }""", Now)!;
+        var older = TelemetrySnapshot.Parse(Answer, Now)!;
+        var half = TelemetrySnapshot.Parse("""{ "requests": { }, "sql": { "perMinute": 117, "requests": 62 } }""", Now)!;
+
+        Assert.Equal((117, 62, 55, true, 62), (split.Sql, split.SqlRequests, split.SqlBackground, split.SplitsSql, split.SqlOfTraffic));
+        Assert.Equal((30, null, null, false, 30), (older.Sql, older.SqlRequests, older.SqlBackground, older.SplitsSql, older.SqlOfTraffic));
+        // One of the two is not enough to tell them apart: the total stays the number.
+        Assert.Equal((false, 117), (half.SplitsSql, half.SqlOfTraffic));
+    }
+
+    [Fact]
+    public void TheDatabaseArrowShowsTheQueriesOfTheRequestsAndNamesTheBackgroundOnes()
+    {
+        var payload = RuntimePayloadBuilder.Build(Manifest(), Uat(Split(62, 55), Split(0, 48)), Page, TimeZoneInfo.Utc);
+
+        var primary = Edge(payload, "app_ui_primary-to-sqldb");
+        Assert.Equal(("62", "calls/min", "queries of the app · 55 background"), Triple(primary));
+        Assert.Contains("62 SQL commands while handling requests (the number shown: what traffic causes) and 55 in the background (mostly the message bus polling the database), 117 in all, p95 12 ms", primary.Title, StringComparison.Ordinal);
+        Assert.Equal(("0", "calls/min", "queries of the app · 48 background"), Triple(Edge(payload, "app_ui_standby-to-sqldb")));
+
+        var database = payload.Nodes.Single(tile => tile.Alias == "sqldb");
+        Assert.Equal("62 queries/min", database.Facts);
+        Assert.Contains("62 while handling requests, 103 in the background (mostly the message bus polling the database)", database.Title, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnOlderAppThatDoesNotTellThemApartKeepsTheTotalOnItsArrow()
+    {
+        var payload = RuntimePayloadBuilder.Build(Manifest(), Uat(Split(62, 55), Snapshot(sql: 9)), Page, TimeZoneInfo.Utc);
+
+        var standby = Edge(payload, "app_ui_standby-to-sqldb");
+        Assert.Equal(("9", "calls/min", "queries of the app"), Triple(standby));
+        Assert.Contains("counted by the web app: 9 SQL commands, p95 12 ms;", standby.Title, StringComparison.Ordinal);
+        Assert.DoesNotContain("background", standby.Title, StringComparison.Ordinal);
+
+        // The database adds what each app's traffic causes: the requests' queries of the one, all queries of the other.
+        var database = payload.Nodes.Single(tile => tile.Alias == "sqldb");
+        Assert.Equal("71 queries/min", database.Facts);
+        Assert.Contains("71 while handling requests, 55 in the background", database.Title, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void WithoutTheSplitTheDatabaseTooltipSaysNothingOfTheBackground()
+    {
+        var payload = RuntimePayloadBuilder.Build(Manifest(), Uat(Snapshot(), Snapshot(sql: 3)), Page, TimeZoneInfo.Utc);
+
+        Assert.DoesNotContain("background", payload.Nodes.Single(tile => tile.Alias == "sqldb").Title, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheSparklineOfTheDatabaseArrowFollowsTheNumberShown()
+    {
+        var uat = Uat(Snapshot(sql: 100), null);
+        var node = uat.Deployables[0].Nodes[0];
+
+        // An older app: the trend of all its commands.
+        node.RecordTelemetry(Snapshot(sql: 50));
+        Assert.Equal("SQL commands per minute, last 2 checks: 50 to 100, now 50", Trends.Sql(node)!.Title);
+
+        // Once it tells them apart, the trend is of the requests' commands; the readings from before have none.
+        node.RecordTelemetry(Split(20, 55));
+        Assert.Null(Trends.Sql(node));
+        node.RecordTelemetry(Split(40, 60));
+        var trend = Trends.Sql(node)!;
+        Assert.Equal("SQL commands per minute while handling requests, last 2 checks: 20 to 40, now 40", trend.Title);
+
+        var edge = Edge(RuntimePayloadBuilder.Build(Manifest(), uat, Page, TimeZoneInfo.Utc), "app_ui_primary-to-sqldb");
+        Assert.Equal("40", edge.Number);
+        Assert.Equal(trend.Points, edge.Trend!.Points);
     }
 
     private static (string?, string?, string?) Triple(RuntimeEdgeMark mark) => (mark.Number, mark.Unit, mark.Text);

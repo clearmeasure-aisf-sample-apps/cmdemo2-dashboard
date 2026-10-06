@@ -25,7 +25,11 @@ public class TopologyParserTests
         var topology = Valid(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "topology.sample.json")));
 
         Assert.Equal(
-            new SystemInfo("cmdemo2", "CM demo 2 multi-region", new Uri("https://github.com/example-org/cmdemo2-system")),
+            new SystemInfo(
+                "cmdemo2",
+                "CM demo 2 multi-region",
+                new Uri("https://github.com/example-org/cmdemo2-system"),
+                new Uri("https://raw.githubusercontent.com/example-org/cmdemo2-system/status/delivery.json")),
             topology.System);
         Assert.Equal(new DateTimeOffset(2026, 10, 4, 22, 0, 0, TimeSpan.Zero), topology.Generated);
         Assert.Equal(["tdd", "uat"], topology.Environments.Select(environment => environment.Name));
@@ -39,7 +43,7 @@ public class TopologyParserTests
         Assert.Equal("/_version", tdd.VersionPath);
         Assert.Equal(
             new NodeInfo("app-cmdemo2-tdd-ui", "westus3", "primary", new Uri("https://app-cmdemo2-tdd-ui.azurewebsites.net")),
-            Assert.Single(tdd.Nodes));
+            Assert.Single(tdd.Nodes) with { Links = null });
 
         var uat = Assert.Single(topology.Environments[1].Deployables);
         Assert.Equal(["westus3", "eastus2"], uat.Nodes.Select(node => node.Region));

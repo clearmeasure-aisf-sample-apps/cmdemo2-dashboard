@@ -21,12 +21,12 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.1
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
@@ -46,7 +46,7 @@ jobs:
         run: dotnet publish src/Dashboard -c Release --no-restore -warnaserror "-p:Version=${VERSION}" -o publish
 
       - name: Upload the site
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dashboard-site
           path: publish/wwwroot
@@ -57,7 +57,7 @@ jobs:
     name: Build result
     needs: build
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: The build job succeeded
         env:

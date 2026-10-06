@@ -66,14 +66,16 @@ public static class TopologyParser
         var slug = string.Empty;
         string? name = null;
         Uri? repository = null;
+        Uri? delivery = null;
         if (root.TryGetProperty("system", out var system) && system.ValueKind == JsonValueKind.Object)
         {
             slug = ReadText(system, "slug") ?? string.Empty;
             name = ReadText(system, "name");
             repository = ReadOptionalAddress(system, "repository", "system", errors);
+            delivery = ReadOptionalAddress(system, "deliveryUrl", "system", errors);
         }
 
-        return new SystemInfo(slug, name ?? (slug.Length > 0 ? slug : "System"), repository);
+        return new SystemInfo(slug, name ?? (slug.Length > 0 ? slug : "System"), repository, delivery);
     }
 
     private static List<EnvironmentInfo> ReadEnvironments(JsonElement root, List<string> errors)
@@ -105,7 +107,7 @@ public static class TopologyParser
             var versions = ReadOptionalAddress(element, "versionsUrl", path, errors);
             var history = ReadOptionalAddress(element, "versionsHistoryUrl", path, errors);
             var deployables = ReadDeployables(element, path, errors);
-            environments.Add(new EnvironmentInfo(name, ReadText(element, "tier"), deployables, versions, history));
+            environments.Add(new EnvironmentInfo(name, ReadText(element, "tier"), deployables, versions, history, ReadLinks(element)));
         }
 
         return environments;
@@ -141,7 +143,9 @@ public static class TopologyParser
                 nodes,
                 project,
                 ReadText(element, "telemetryPath") is { Length: > 0 } telemetry ? AsPath(telemetry) : null,
-                ReadPaths(element, "trafficPaths", path, errors)));
+                ReadPaths(element, "trafficPaths", path, errors),
+                ReadText(element, "buildPath") is { Length: > 0 } build ? AsPath(build) : null,
+                ReadLinks(element)));
         }
 
         return deployables;
@@ -193,10 +197,34 @@ public static class TopologyParser
             // Without a role, the order of the file decides: the first node is the primary.
             var role = ReadText(element, "role")?.ToLowerInvariant()
                 ?? (position == 0 ? NodeInfo.PrimaryRole : NodeInfo.StandbyRole);
-            nodes.Add(new NodeInfo(ReadText(element, "name") ?? url.Host, ReadText(element, "region"), role, url));
+            nodes.Add(new NodeInfo(ReadText(element, "name") ?? url.Host, ReadText(element, "region"), role, url, ReadLinks(element)));
         }
 
         return nodes;
+    }
+
+    /// <summary>
+    /// The optional <c>links</c> of an element: every entry whose value is an absolute http or https address. Anything
+    /// else is left out, and the number it belongs to stays plain text: a link is a courtesy, never a reason to show
+    /// no dashboard. Null without a single link.
+    /// </summary>
+    private static LinkSet? ReadLinks(JsonElement parent)
+    {
+        if (!parent.TryGetProperty("links", out var links) || links.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var found = new Dictionary<string, Uri>(StringComparer.Ordinal);
+        foreach (var property in links.EnumerateObject())
+        {
+            if (ReadAddress(property.Value) is { } address)
+            {
+                found[property.Name] = address;
+            }
+        }
+
+        return found.Count == 0 ? null : new LinkSet(found);
     }
 
     /// <summary>False when the array is absent (fine: it is empty) or of the wrong type (an error).</summary>
