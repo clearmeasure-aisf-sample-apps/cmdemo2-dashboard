@@ -69,8 +69,13 @@ public sealed class DashboardMonitor
 
     private async Task CheckAsync(DeployableInfo deployable, TargetStatus target, ProbeKind probe, CancellationToken cancellationToken)
     {
+        // A regional node also reports its calls; a Front Door address would only answer for the node behind it.
+        var telemetry = target.Kind == TargetKind.Node && deployable.TelemetryPath is { } path
+            ? _prober.ReadTelemetryAsync(target.Url, path, cancellationToken)
+            : Task.FromResult<TelemetrySnapshot?>(null);
         var result = await _prober.ProbeAsync(target.Url, deployable.PathFor(probe), deployable.VersionPath, cancellationToken);
         target.Record(result with { Probe = probe });
+        target.RecordTelemetry(await telemetry);
         Changed?.Invoke();
     }
 }

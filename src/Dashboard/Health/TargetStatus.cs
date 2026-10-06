@@ -36,6 +36,11 @@ public sealed class TargetStatus(TargetKind kind, string name, Uri url, string? 
     /// <summary>The version the endpoint last reported: a node that stops answering keeps its last known version.</summary>
     public string? Version { get; private set; }
 
+    /// <summary>The node's own count of its calls at the last check; null when it reported none.</summary>
+    public TelemetrySnapshot? Telemetry { get; private set; }
+
+    public void RecordTelemetry(TelemetrySnapshot? telemetry) => Telemetry = telemetry;
+
     public void Record(ProbeResult result)
     {
         ArgumentNullException.ThrowIfNull(result);

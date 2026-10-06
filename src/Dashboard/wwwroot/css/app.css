@@ -907,6 +907,7 @@ main {
 
 /* A relationship's number line: a dashed frame keeps the place of the number. */
 .rt-number__hook { fill: #ffffff; stroke: #78909c; stroke-width: 1; stroke-dasharray: 3 3; }
+.rt-number--counted .rt-number__hook { stroke: #455a64; stroke-dasharray: none; }
 .rt-number__text { fill: #37474f; }
 .rt-number__value { font-weight: 700; }
 .rt-number__role { fill: #546e7a; }
@@ -951,6 +952,25 @@ main {
 }
 
 /* ---------- Footer ---------- */
+
+/* ---------- Traffic (the button at the bottom) ---------- */
+
+.traffic {
+  margin: 1.5rem 0 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.traffic__title {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.traffic__status {
+  color: var(--ink-secondary);
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
 
 .page-footer {
   display: flex;

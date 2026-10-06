@@ -302,7 +302,7 @@ public class RuntimePayloadBuilderTests
     }
 
     [Fact]
-    public void TheNumberLinesHoldAPlaceForCallsPerMinute()
+    public void WithoutTelemetryTheNumberLinesShowADash()
     {
         var payload = Build(Uat());
 
@@ -310,7 +310,7 @@ public class RuntimePayloadBuilderTests
         Assert.Equal((RuntimePayloadBuilder.NoNumber, "calls/min", "when priority 1 is down"), (origin.Number, origin.Unit, origin.Text));
         Assert.Equal("first, while healthy", payload.Edges.Single(edge => edge.Id == "fd_ui-to-app_ui_primary").Text);
         Assert.Equal("queries of the app", payload.Edges.Single(edge => edge.Id == "app_ui_primary-to-sqldb").Text);
-        Assert.Null(payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Number);
+        Assert.Equal((RuntimePayloadBuilder.NoNumber, null), (payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Number, payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Text));
     }
 
     [Fact]
@@ -324,6 +324,6 @@ public class RuntimePayloadBuilderTests
         Assert.Equal(["alias", "state", "label", "lines", "title"], sql.EnumerateObject().Select(property => property.Name));
         Assert.Equal("muted", sql.GetProperty("lines")[0].GetProperty("tone").GetString());
         var edge = root.GetProperty("edges")[0];
-        Assert.Equal(["id", "state", "title"], edge.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(["id", "state", "number", "unit", "title"], edge.EnumerateObject().Select(property => property.Name));
     }
 }

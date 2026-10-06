@@ -139,7 +139,9 @@ public static class TopologyParser
                 ReadPath(element, "alivePath", DeployableInfo.DefaultAlivePath),
                 ReadPath(element, "versionPath", DeployableInfo.DefaultVersionPath),
                 nodes,
-                project));
+                project,
+                ReadText(element, "telemetryPath") is { Length: > 0 } telemetry ? AsPath(telemetry) : null,
+                ReadPaths(element, "trafficPaths", path, errors)));
         }
 
         return deployables;
@@ -230,10 +232,32 @@ public static class TopologyParser
         return string.IsNullOrEmpty(text) ? null : text;
     }
 
-    private static string ReadPath(JsonElement parent, string property, string fallback)
+    private static string ReadPath(JsonElement parent, string property, string fallback) =>
+        AsPath(ReadText(parent, property) ?? fallback);
+
+    private static string AsPath(string path) => path.StartsWith('/') ? path : $"/{path}";
+
+    /// <summary>An optional array of paths; null when absent, an error for anything but strings.</summary>
+    private static List<string>? ReadPaths(JsonElement parent, string property, string parentPath, List<string> errors)
     {
-        var path = ReadText(parent, property) ?? fallback;
-        return path.StartsWith('/') ? path : $"/{path}";
+        if (!TryReadOptionalArray(parent, property, parentPath, errors, out var array))
+        {
+            return null;
+        }
+
+        var paths = new List<string>();
+        foreach (var element in array.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(element.GetString()))
+            {
+                errors.Add($"{parentPath}.{property}: every entry must be a path.");
+                return null;
+            }
+
+            paths.Add(AsPath(element.GetString()!));
+        }
+
+        return paths;
     }
 
     private static DateTimeOffset? ReadTime(JsonElement parent, string property)

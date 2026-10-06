@@ -96,6 +96,8 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 | `deployables[].healthPath` | no | `/_healthcheck`. |
 | `deployables[].alivePath` | no | `/alive`. |
 | `deployables[].versionPath` | no | `/_version`. |
+| `deployables[].telemetryPath` | no, may be `null` | No calls per minute: the arrows show "–". The nodes' own counts of the last minute (`/_telemetry`, see "Calls per minute"). |
+| `deployables[].trafficPaths` | no, may be `null` | The traffic button calls `/` only. |
 | `deployables[].nodes` | no | No node tiles. |
 | `nodes[].url` | yes, an absolute http(s) address | Error. |
 | `nodes[].name` | no | The host of `url`. |
@@ -187,7 +189,7 @@ diagram in place:
 | Region of web apps | A mark with words: "serving traffic" (green frame), "standby: ready", "not serving" (red frame), by the same serving decision as the health view's banner. |
 | Front Door to an origin | Solid and green while it carries the traffic, dotted grey while idle, dashed red when the origin is not healthy: a failover is the green line moving from priority 1 to priority 2. |
 | Web app to the database | Green from the web app that serves, dotted from the others. |
-| Number line of a relationship | Room for calls per minute (a dashed frame with "–"): nothing measures them yet. Under it, the relationship's role. |
+| Number line of a relationship | Calls per minute of the last minute, in a solid frame, as the web apps count them: browser to Front Door (the sum of its origins' requests from Front Door), Front Door to an origin (its requests from Front Door; Front Door's health probes next to the role), web app to database (SQL commands). A dashed frame with "–" where no web app reports a number (no `telemetryPath`, or an app without the endpoint). |
 | Database | The browser cannot ask Azure SQL, but a web app's health check connects to it: "Reachable" (healthy) when the health check of a web app that uses it passes; "Not confirmed" (neutral) when none passes, since the web app may be the cause; "Not probed" (neutral) with the Liveness probe, which leaves the database alone. |
 | Static site | Neutral, "Not probed": the dashboard does not check itself. The static site that serves the page says "This page". |
 
@@ -290,7 +292,7 @@ The payload, as JSON:
 Node states `healthy`, `unhealthy`, `unreachable`, `checking`, `neutral`; region states `serving`, `standby`, `down`,
 `checking`, `neutral`; relationship states `active`, `idle`, `down`, `checking`, `neutral`; line tones `strong`,
 `plain`, `muted`, `serving`, `ok`, `warn`, `insync`, `differs`, `unknown`. `number` is absent for a relationship
-without a number line; a source of calls per minute fills it later. The script reports every alias or id of the
+without a number line, and "–" where no node reports calls per minute. The script reports every alias or id of the
 payload that the SVG lacks, and the view names them.
 
 ## How the states are decided
@@ -394,3 +396,29 @@ build passes it as `-p:Version=...`, and the dashboard shows it in its footer. A
 The zip carries the sample `topology.json` and `runtime/`; the deployment replaces them with the real ones (it removes
 the sample's `runtime/` first). The build writes no precompressed copy of those files (`topology.json.br`,
 `runtime/*.gz`, ...), so no stale copy can be served.
+
+## Calls per minute and the traffic button
+
+A node with `telemetryPath` answers it with its own counts over the last minute (any origin may read them; numbers
+only):
+
+```json
+{
+  "windowSeconds": 60,
+  "startedAt": "2026-10-05T23:00:00Z",
+  "requests": { "perMinute": 12, "frontDoor": 10, "direct": 2, "errors": 0, "p95Ms": 85 },
+  "probes": { "perMinute": 4, "frontDoor": 6 },
+  "sql": { "perMinute": 30, "p95Ms": 12 },
+  "http": { "perMinute": 0 }
+}
+```
+
+`requests` is traffic (not the checks); `probes.perMinute` the dashboards' and diagnostics' checks, `probes.frontDoor`
+Front Door's health probes. Every round reads it from each regional node next to the health check (never through Front
+Door, which would answer for one node only). An answer that is not this JSON is no numbers, not a failure.
+
+The panel at the bottom of the page sends two requests a second for a minute (`TrafficPlan`) from the browser to the
+chosen environment's public addresses, the Front Door endpoint or else the primary node, round-robin over
+`trafficPaths`. They are plain GETs in mode `no-cors` (`js/traffic.js`): the browser needs no CORS answer, and the
+response stays opaque. While it runs, the page checks every 10 s.
+
