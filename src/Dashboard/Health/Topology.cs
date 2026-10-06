@@ -6,7 +6,8 @@ public sealed record Topology(SystemInfo System, DateTimeOffset? Generated, IRea
 /// <param name="Slug">The system's short name.</param>
 /// <param name="Name">The name the header shows.</param>
 /// <param name="Repository">The system repository on GitHub, where the deployments pin the versions.</param>
-public sealed record SystemInfo(string Slug, string Name, Uri? Repository = null);
+/// <param name="DeliveryUrl">Where the browser reads the system's delivery facts (<c>delivery.json</c>); null without them.</param>
+public sealed record SystemInfo(string Slug, string Name, Uri? Repository = null, Uri? DeliveryUrl = null);
 
 /// <param name="Name">The environment's name.</param>
 /// <param name="Tier">The tier, for example <c>nonprod</c>.</param>
@@ -15,12 +16,14 @@ public sealed record SystemInfo(string Slug, string Name, Uri? Repository = null
 /// Where the browser reads the environment's <c>versions.json</c>: the versions the deployments pinned in Git.
 /// </param>
 /// <param name="VersionsHistoryUrl">The page with the history of that file.</param>
+/// <param name="Links">Where the environment's resources are (<see cref="LinkSet"/>); null without links.</param>
 public sealed record EnvironmentInfo(
     string Name,
     string? Tier,
     IReadOnlyList<DeployableInfo> Deployables,
     Uri? VersionsUrl = null,
-    Uri? VersionsHistoryUrl = null);
+    Uri? VersionsHistoryUrl = null,
+    LinkSet? Links = null);
 
 /// <summary>
 /// One deployable of an environment: its public address (Front Door), the nodes behind it and the page of the project
@@ -30,6 +33,11 @@ public sealed record EnvironmentInfo(
 /// Where a node reports its own calls of the last minute (<c>/_telemetry</c>); null when the app has no such endpoint.
 /// </param>
 /// <param name="TrafficPaths">The paths the traffic button calls: representative requests, the start page first.</param>
+/// <param name="BuildPath">
+/// Where the primary node reports the build it runs (<c>/_build</c>, see <see cref="BuildInfo"/>); null when the app
+/// has no such endpoint.
+/// </param>
+/// <param name="Links">Where the deployable's resources are (<see cref="LinkSet"/>); null without links.</param>
 public sealed record DeployableInfo(
     string Name,
     Uri? FrontDoor,
@@ -39,7 +47,9 @@ public sealed record DeployableInfo(
     IReadOnlyList<NodeInfo> Nodes,
     Uri? ProjectUrl = null,
     string? TelemetryPath = null,
-    IReadOnlyList<string>? TrafficPaths = null)
+    IReadOnlyList<string>? TrafficPaths = null,
+    string? BuildPath = null,
+    LinkSet? Links = null)
 {
     public const string DefaultHealthPath = "/_healthcheck";
     public const string DefaultAlivePath = "/alive";
@@ -50,7 +60,8 @@ public sealed record DeployableInfo(
 }
 
 /// <summary>One regional node (web app) of a deployable.</summary>
-public sealed record NodeInfo(string Name, string? Region, string Role, Uri Url)
+/// <param name="Links">Where the node's numbers lead (<see cref="LinkSet"/>); null without links.</param>
+public sealed record NodeInfo(string Name, string? Region, string Role, Uri Url, LinkSet? Links = null)
 {
     public const string PrimaryRole = "primary";
     public const string StandbyRole = "standby";

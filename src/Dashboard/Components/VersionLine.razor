@@ -12,7 +12,7 @@
             <p class="versions__detail">@detail</p>
         }
     }
-    @if (ProjectUrl is not null || HistoryUrl is not null)
+    @if (ProjectUrl is not null || HistoryUrl is not null || LogsUrl is not null)
     {
         <p class="versions__links">
             @if (ProjectUrl is { } project)
@@ -26,6 +26,12 @@
                 <a href="@history.AbsoluteUri" target="_blank" rel="noopener"
                    aria-label="@($"Pin history of {EnvironmentName} (opens in a new tab)")"
                    title="@($"The history of {PinnedVersions.FileName} of {EnvironmentName} on GitHub (opens in a new tab)")">Pin history</a>
+            }
+            @if (LogsUrl is { } logs)
+            {
+                <a href="@logs.AbsoluteUri" target="_blank" rel="noopener"
+                   aria-label="@($"Requests of {DeployableName} in {EnvironmentName} in Application Insights Logs (opens in a new tab)")"
+                   title="@LinkText.For(LinkSet.Logs, $"{DeployableName} in {EnvironmentName}")">Requests in Logs</a>
             }
         </p>
     }
@@ -47,6 +53,10 @@
 
     [Parameter]
     public Uri? HistoryUrl { get; set; }
+
+    /// <summary>The requests of the deployable's role as a Logs query (<c>links.logs</c> of the deployable); null without it.</summary>
+    [Parameter]
+    public Uri? LogsUrl { get; set; }
 
     private string PinnedHelp =>
         $"Pinned: the version the last deployment of {DeployableName} to {EnvironmentName} committed to "

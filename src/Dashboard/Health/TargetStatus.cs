@@ -10,9 +10,12 @@ public enum TargetKind
 }
 
 /// <summary>One tile of the dashboard: an endpoint, its last check and the checks before it.</summary>
-public sealed class TargetStatus(TargetKind kind, string name, Uri url, string? region = null, string? role = null)
+public sealed class TargetStatus(TargetKind kind, string name, Uri url, string? region = null, string? role = null, LinkSet? links = null)
 {
     public const int HistoryLength = 30;
+
+    /// <summary>Where the tile's numbers lead: a node's own links; for the Front Door endpoint, the deployable's.</summary>
+    public LinkSet Links { get; } = links ?? LinkSet.None;
 
     public TargetKind Kind { get; } = kind;
 
@@ -39,7 +42,28 @@ public sealed class TargetStatus(TargetKind kind, string name, Uri url, string? 
     /// <summary>The node's own count of its calls at the last check; null when it reported none.</summary>
     public TelemetrySnapshot? Telemetry { get; private set; }
 
-    public void RecordTelemetry(TelemetrySnapshot? telemetry) => Telemetry = telemetry;
+    /// <summary>
+    /// The last <see cref="Trend.Length"/> readings of the node's telemetry, oldest first, for the sparklines: one per
+    /// check, null where the node reported none.
+    /// </summary>
+    public HistoryBuffer<TelemetrySnapshot?> Samples { get; } = new(Trend.Length);
+
+    /// <summary>Records the telemetry of one check. A node that never reported any keeps no readings.</summary>
+    public void RecordTelemetry(TelemetrySnapshot? telemetry)
+    {
+        Telemetry = telemetry;
+        if (telemetry is not null || Samples.Count > 0)
+        {
+            Samples.Add(telemetry);
+        }
+    }
+
+    /// <summary>The trend of one number of the telemetry over the readings kept; null with fewer than two.</summary>
+    public Trend? TrendOf(Func<TelemetrySnapshot, double?> number, string what, string unit = "")
+    {
+        ArgumentNullException.ThrowIfNull(number);
+        return Trend.Of(Samples.Select(sample => sample is null ? null : number(sample)), what, unit);
+    }
 
     public void Record(ProbeResult result)
     {
@@ -61,9 +85,41 @@ public sealed class DeployableStatus
     {
         ArgumentNullException.ThrowIfNull(info);
         Info = info;
-        FrontDoor = info.FrontDoor is null ? null : new TargetStatus(TargetKind.FrontDoor, "Front Door", info.FrontDoor);
-        Nodes = [.. info.Nodes.Select(node => new TargetStatus(TargetKind.Node, node.Name, node.Url, node.Region, node.Role))];
+        FrontDoor = info.FrontDoor is null ? null : new TargetStatus(TargetKind.FrontDoor, "Front Door", info.FrontDoor, links: info.Links);
+        Nodes = [.. info.Nodes.Select(node => new TargetStatus(TargetKind.Node, node.Name, node.Url, node.Region, node.Role, node.Links))];
+        BuildSource = info.BuildPath is null ? null : Nodes.FirstOrDefault(node => node.IsPrimary) ?? (Nodes.Count > 0 ? Nodes[0] : null);
     }
+
+    /// <summary>The node asked for the build facts: the primary; null when the topology names no <c>buildPath</c>.</summary>
+    public TargetStatus? BuildSource { get; }
+
+    /// <summary>The build the deployable runs in this environment, as its primary node reports it; null when it reports none.</summary>
+    public BuildInfo? Build { get; private set; }
+
+    /// <summary>True once the build endpoint was asked.</summary>
+    public bool BuildWasRead { get; private set; }
+
+    /// <summary>The version the node ran when the build endpoint was asked: another version is another build.</summary>
+    public string? BuildReadForVersion { get; private set; }
+
+    /// <summary>The serving decision at the end of the last round of checks; null before the first.</summary>
+    public ServingAssessment? LastServing { get; private set; }
+
+    /// <summary>
+    /// True when the build endpoint should be asked now: it was not asked yet, or the node reports another version
+    /// than when it was. Not every round: the answer changes only with a deployment.
+    /// </summary>
+    public bool BuildIsDue(string? version) =>
+        !BuildWasRead || !string.Equals(version, BuildReadForVersion, StringComparison.OrdinalIgnoreCase);
+
+    public void RecordBuild(BuildInfo? build, string? version)
+    {
+        Build = build;
+        BuildWasRead = true;
+        BuildReadForVersion = version;
+    }
+
+    public void RecordServing(ServingAssessment assessment) => LastServing = assessment;
 
     public DeployableInfo Info { get; }
 
@@ -112,11 +168,16 @@ public sealed class EnvironmentStatus
     /// <summary>True when a deployable of this environment has a node that runs another version than the pinned one.</summary>
     public bool VersionsDiffer => Deployables.Any(deployable => AssessVersions(deployable) is { Differs: true });
 
+    /// <summary>The last reading that succeeded: what a new reading is compared with to find a new pin.</summary>
+    public PinnedVersions? LastReadPinned { get; private set; }
+
     public void Record(PinnedVersions pinned)
     {
         ArgumentNullException.ThrowIfNull(pinned);
         Pinned = pinned;
     }
+
+    public void RememberPinned(PinnedVersions pinned) => LastReadPinned = pinned;
 
     /// <summary>
     /// The pinned version of a deployable next to the versions its nodes run; null when the topology names no

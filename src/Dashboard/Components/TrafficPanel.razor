@@ -47,6 +47,8 @@
     private int[] _status = [0, 0, 0, 1];
     private DateTimeOffset? _started;
     private bool _pressed;
+    private bool _stopRequested;
+    private TrafficPlan? _running;
 
     /// <summary>The page's monitor: its environments are the choices.</summary>
     [Parameter, EditorRequired]
@@ -62,6 +64,10 @@
 
     [Parameter, EditorRequired]
     public TimeProvider Time { get; set; } = default!;
+
+    /// <summary>The page's log of what it observed: a start and an end of the traffic are events.</summary>
+    [Parameter]
+    public EventLog? Events { get; set; }
 
     private bool Running => _pressed && _status[3] == 0;
 
@@ -112,6 +118,12 @@
         _pressed = true;
         _started = Time.GetUtcNow();
         _status = [0, 0, 0, 0];
+        _stopRequested = false;
+        _running = plan;
+        Events?.Add(EventDetector.Traffic(
+            plan.Environment,
+            $"Traffic started: {TrafficPlan.PerSecond} requests a second for {TrafficPlan.Seconds} s to {string.Join(", ", plan.Targets)}",
+            _started.Value));
         _ = FollowAsync();
     }
 
@@ -133,6 +145,7 @@
                 StateHasChanged();
                 if (!Running)
                 {
+                    Ended();
                     return;
                 }
             }
@@ -147,8 +160,23 @@
         }
     }
 
+    /// <summary>Writes the end of a run to the log, once: by itself after its minute, or stopped by the viewer.</summary>
+    private void Ended()
+    {
+        if (_running is not { } plan)
+        {
+            return;
+        }
+
+        _running = null;
+        var (sent, answered, failed) = (_status[0], _status[1], _status[2]);
+        var counts = $"{sent} sent, {answered} answered{(failed > 0 ? $", {failed} failed" : string.Empty)}";
+        Events?.Add(EventDetector.Traffic(plan.Environment, $"Traffic {(_stopRequested ? "stopped" : "ended")}: {counts}", Time.GetUtcNow()));
+    }
+
     private async Task StopAsync()
     {
+        _stopRequested = true;
         if (_module is { } module)
         {
             await module.InvokeVoidAsync("stop");

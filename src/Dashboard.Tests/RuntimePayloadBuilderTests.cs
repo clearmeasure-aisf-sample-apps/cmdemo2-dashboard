@@ -40,6 +40,9 @@ public class RuntimePayloadBuilderTests
 
     private static RuntimeTile Tile(RuntimePayload payload, string alias) => payload.Nodes.Single(tile => tile.Alias == alias);
 
+    /// <summary>A tile's lines as words and tone: what a reader sees, whatever is a link.</summary>
+    private static (string Text, string Tone)[] Words(RuntimeTile tile) => [.. tile.Lines.Select(line => (line.Text, line.Tone))];
+
     private static string Region(RuntimePayload payload, string alias) => payload.Regions.Single(region => region.Alias == alias).State;
 
     private static string Edge(RuntimePayload payload, string id) => payload.Edges.Single(edge => edge.Id == id).State;
@@ -81,16 +84,12 @@ public class RuntimePayloadBuilderTests
         Assert.Equal("healthy", primary.State);
         Assert.Equal("Healthy", primary.Label);
         Assert.Equal("HTTP 200 · 40 ms", primary.Facts);
-        Assert.Equal(
-            [new RuntimeTileLine("version 2.4.21", "strong"), new RuntimeTileLine("pinned 2.4.21: in sync", "insync"), new RuntimeTileLine("primary: serves traffic", "serving")],
-            primary.Lines);
+        Assert.Equal([("version 2.4.21", "strong"), ("pinned 2.4.21: in sync", "insync"), ("primary: serves traffic", "serving")], Words(primary));
         Assert.Equal(["healthy"], primary.History!);
         Assert.Contains("https://app-cmdemo2-uat-ui.azurewebsites.net/", primary.Title, StringComparison.Ordinal);
 
         var standby = Tile(payload, "app_ui_standby");
-        Assert.Equal(
-            [new RuntimeTileLine("version 2.4.20", "strong"), new RuntimeTileLine("differs from pinned 2.4.21", "differs"), new RuntimeTileLine("standby: ready, no traffic", "muted")],
-            standby.Lines);
+        Assert.Equal([("version 2.4.20", "strong"), ("differs from pinned 2.4.21", "differs"), ("standby: ready, no traffic", "muted")], Words(standby));
 
         Assert.Equal(new RuntimeRegionMark("region_primary", "serving", "serving traffic"), payload.Regions.Single(region => region.Alias == "region_primary"));
         Assert.Equal(new RuntimeRegionMark("region_standby", "standby", "standby: ready"), payload.Regions.Single(region => region.Alias == "region_standby"));
@@ -101,9 +100,7 @@ public class RuntimePayloadBuilderTests
         Assert.Equal("active", Edge(payload, "browser-to-fd_ui"));
 
         var frontDoor = Tile(payload, "fd_ui");
-        Assert.Equal(
-            [new RuntimeTileLine("version 2.4.21", "strong"), new RuntimeTileLine("routes to westus3 (priority 1)", "plain"), new RuntimeTileLine("agrees with the web apps", "ok")],
-            frontDoor.Lines);
+        Assert.Equal([("version 2.4.21", "strong"), ("routes to westus3 (priority 1)", "plain"), ("agrees with the web apps", "ok")], Words(frontDoor));
     }
 
     [Fact]
@@ -321,7 +318,9 @@ public class RuntimePayloadBuilderTests
         var root = json.RootElement;
         Assert.Equal(["nodes", "regions", "edges"], root.EnumerateObject().Select(property => property.Name));
         var sql = root.GetProperty("nodes").EnumerateArray().Single(node => node.GetProperty("alias").GetString() == "sqldb");
-        Assert.Equal(["alias", "state", "label", "lines", "title"], sql.EnumerateObject().Select(property => property.Name));
+        // The sample topology has a link to the database: the name of its node leads there.
+        Assert.Equal(["alias", "state", "label", "lines", "title", "nameLink"], sql.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(["href", "title"], sql.GetProperty("nameLink").EnumerateObject().Select(property => property.Name));
         Assert.Equal("muted", sql.GetProperty("lines")[0].GetProperty("tone").GetString());
         var edge = root.GetProperty("edges")[0];
         Assert.Equal(["id", "state", "number", "unit", "title"], edge.EnumerateObject().Select(property => property.Name));

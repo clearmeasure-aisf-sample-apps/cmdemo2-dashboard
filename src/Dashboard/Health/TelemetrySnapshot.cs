@@ -30,6 +30,27 @@ public sealed record TelemetrySnapshot(
     int Http,
     DateTimeOffset ReadAt)
 {
+    /// <summary>The process's own vitals (<c>process</c>); null for an app that does not report them.</summary>
+    public ProcessVitals? Process { get; init; }
+
+    /// <summary>When the process started (<c>startedAt</c>): a later one than before is a restart.</summary>
+    public DateTimeOffset? StartedAt { get; init; }
+
+    /// <summary>Of the SQL commands, those run while handling an HTTP request (<c>sql.requests</c>); null for an app that does not tell them apart.</summary>
+    public int? SqlRequests { get; init; }
+
+    /// <summary>Of the SQL commands, all the others (<c>sql.background</c>): mostly the message bus polling the database.</summary>
+    public int? SqlBackground { get; init; }
+
+    /// <summary>True when the app tells the SQL commands of its requests from those in the background.</summary>
+    public bool SplitsSql => SqlRequests is not null && SqlBackground is not null;
+
+    /// <summary>
+    /// The SQL commands the traffic causes: those of the requests where the app tells them apart, and all of them for
+    /// an app that does not (an older one).
+    /// </summary>
+    public int SqlOfTraffic => SplitsSql ? SqlRequests!.Value : Sql;
+
     /// <summary>The endpoint's answer; null when it is not the expected JSON (an older app, an error page).</summary>
     public static TelemetrySnapshot? Parse(string json, DateTimeOffset readAt)
     {
@@ -57,7 +78,13 @@ public sealed record TelemetrySnapshot(
                 Count(sql, "perMinute"),
                 Optional(sql, "p95Ms"),
                 Count(http, "perMinute"),
-                readAt);
+                readAt)
+            {
+                Process = ProcessVitals.Read(root),
+                SqlRequests = Optional(sql, "requests"),
+                SqlBackground = Optional(sql, "background"),
+                StartedAt = JsonRead.Time(root, "startedAt"),
+            };
         }
         catch (JsonException)
         {

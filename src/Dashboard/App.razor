@@ -84,7 +84,7 @@
     @if (_monitor is { } runtimeMonitor && _address.View == DashboardView.Runtime)
     {
         <RuntimeView Monitor="runtimeMonitor" Environment="@_address.Environment" EnvironmentChanged="OnRuntimeEnvironmentChangedAsync"
-                     Page="PageAddress" Zone="Zone" />
+                     Page="PageAddress" Zone="Zone" Now="Time.GetUtcNow()" />
     }
     else if (_monitor is { } monitor)
     {
@@ -104,6 +104,7 @@
                     {
                         <span class="chip">@tier</span>
                     }
+                    <EnvironmentLinks Links="environment.Info.Links" Environment="@environment.Name" />
                 </header>
                 @if (environment.Deployables.Count == 0)
                 {
@@ -115,8 +116,9 @@
                 @foreach (var deployable in environment.Deployables)
                 {
                     <DeployableSection @key="deployable" Deployable="deployable" Environment="environment" Zone="Zone"
-                                       IdPrefix="@($"{environmentId}-app-{deployableIndex++}")" />
+                                       Monitor="monitor" Now="Time.GetUtcNow()" IdPrefix="@($"{environmentId}-app-{deployableIndex++}")" />
                 }
+                <EnvironmentDelivery Monitor="monitor" Environment="environment" IdPrefix="@environmentId" Zone="Zone" Now="Time.GetUtcNow()" />
             </section>
         }
     }
@@ -143,9 +145,11 @@
     }
 </main>
 
+@* Under both views: what the page observed, then the traffic button. *@
 @if (_monitor is { } trafficMonitor)
 {
-    <TrafficPanel Monitor="trafficMonitor" Environment="@(_address.Environment ?? _runtimeEnvironment)" CheckNow="CheckNow" Time="Time" />
+    <EventsStrip Events="_events" Monitor="trafficMonitor" Opened="_opened" Zone="Zone" Now="Time.GetUtcNow()" />
+    <TrafficPanel Monitor="trafficMonitor" Environment="@(_address.Environment ?? _runtimeEnvironment)" CheckNow="CheckNow" Time="Time" Events="_events" />
 }
 
 <footer class="page-footer">
@@ -188,6 +192,10 @@
     private static readonly string DashboardVersion = VersionText.OfAssembly(typeof(App).Assembly);
 
     private readonly CancellationTokenSource _stopping = new();
+
+    // One log for the life of the page: a reload of the topology starts a new monitor and keeps what was observed.
+    private readonly EventLog _events = new();
+    private DateTimeOffset _opened;
     private Poller _poller = default!;
     private Task _polling = Task.CompletedTask;
     private DashboardMonitor? _monitor;
@@ -273,6 +281,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        _opened = Time.GetUtcNow();
         _poller = new Poller(CheckAsync, Time, DefaultInterval);
         await LoadTopologyAsync();
         _polling = RunPollerAsync();
@@ -345,7 +354,7 @@
                 previous.Changed -= OnMonitorChanged;
             }
 
-            _monitor = result.Topology is { } topology ? new DashboardMonitor(topology, Prober, Versions, Time) : null;
+            _monitor = result.Topology is { } topology ? new DashboardMonitor(topology, Prober, Versions, Time, _events) : null;
             _errors = result.Topology is null ? result.Errors : null;
             if (_monitor is { } monitor)
             {

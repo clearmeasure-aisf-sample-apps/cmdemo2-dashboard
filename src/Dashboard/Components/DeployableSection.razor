@@ -3,7 +3,8 @@
     var serving = assessment.State.ToString().ToLowerInvariant();
     var disagrees = assessment.FrontDoor == FrontDoorAgreement.Disagrees;
     var versions = Environment.AssessVersions(Deployable);
-    var hasVersionLine = versions is not null || Deployable.Info.ProjectUrl is not null || Environment.Info.VersionsHistoryUrl is not null;
+    var logs = Deployable.Info.Links?[LinkSet.Logs];
+    var hasVersionLine = versions is not null || Deployable.Info.ProjectUrl is not null || Environment.Info.VersionsHistoryUrl is not null || logs is not null;
 }
 <section class="deployable" aria-labelledby="@($"{IdPrefix}-title")">
     <header class="deployable__header">
@@ -48,7 +49,7 @@
             @if (hasVersionLine)
             {
                 <VersionLine Assessment="versions" DeployableName="@Deployable.Info.Name" EnvironmentName="@Environment.Name"
-                             ProjectUrl="Deployable.Info.ProjectUrl" HistoryUrl="Environment.Info.VersionsHistoryUrl" />
+                             ProjectUrl="Deployable.Info.ProjectUrl" HistoryUrl="Environment.Info.VersionsHistoryUrl" LogsUrl="logs" />
             }
         </div>
     </header>
@@ -66,10 +67,12 @@
             @foreach (var target in Deployable.Targets)
             {
                 var id = $"{IdPrefix}-tile-{index++}";
-                <TargetTile @key="target" Target="target" HeadingId="@id" Zone="Zone" IsExpected="ReferenceEquals(target, expected)" />
+                <TargetTile @key="target" Target="target" HeadingId="@id" Zone="Zone" IsExpected="ReferenceEquals(target, expected)" Deployable="Deployable" />
             }
         </div>
     }
+
+    <DeployableFacts Monitor="Monitor" Environment="Environment" Deployable="Deployable" IdPrefix="@IdPrefix" Zone="Zone" Now="Now" />
 </section>
 
 @code {
@@ -79,6 +82,14 @@
     /// <summary>The environment of the deployable: it holds the versions pinned in Git.</summary>
     [Parameter, EditorRequired]
     public EnvironmentStatus Environment { get; set; } = default!;
+
+    /// <summary>The page's monitor: it holds the delivery facts of the system.</summary>
+    [Parameter, EditorRequired]
+    public DashboardMonitor Monitor { get; set; } = default!;
+
+    /// <summary>The moment of this rendering: "2 h ago" is counted from it.</summary>
+    [Parameter, EditorRequired]
+    public DateTimeOffset Now { get; set; }
 
     /// <summary>Prefix of the element ids of this section, unique on the page.</summary>
     [Parameter, EditorRequired]

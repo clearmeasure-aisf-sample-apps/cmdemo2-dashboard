@@ -104,6 +104,39 @@ public sealed class NodeProber(HttpClient http, TimeProvider time)
         }
     }
 
+    /// <summary>
+    /// The build a node runs (<see cref="BuildInfo"/>), from its build endpoint. A courtesy like the telemetry: no
+    /// answer, another status or anything but the expected JSON is no build facts.
+    /// </summary>
+    public Task<BuildInfo?> ReadBuildAsync(Uri baseAddress, string buildPath, CancellationToken cancellationToken) =>
+        ReadAsync(ProbeUrl.Combine(baseAddress, buildPath), BuildInfo.Parse, cancellationToken);
+
+    /// <summary>The system's delivery facts (<see cref="DeliveryReport"/>), from the address the topology gives.</summary>
+    public Task<DeliveryReport?> ReadDeliveryAsync(Uri address, CancellationToken cancellationToken) =>
+        ReadAsync(address, DeliveryReport.Parse, cancellationToken);
+
+    /// <summary>An optional JSON answer, read with the node's timeout: null whenever it cannot be read.</summary>
+    private async Task<T?> ReadAsync<T>(Uri address, Func<string?, T?> parse, CancellationToken cancellationToken)
+        where T : class
+    {
+        using var timeout = new CancellationTokenSource(Timeout, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        try
+        {
+            using var request = NewRequest(address);
+            using var response = await http.SendAsync(request, linked.Token);
+            return response.IsSuccessStatusCode ? parse(await response.Content.ReadAsStringAsync(linked.Token)) : null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>A GET that the browser neither answers from its cache nor stores in it.</summary>
     internal static HttpRequestMessage NewRequest(Uri address)
     {
