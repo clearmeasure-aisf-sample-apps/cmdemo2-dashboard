@@ -130,6 +130,11 @@ a {
   text-underline-offset: 0.15em;
 }
 
+/* A link keeps its colour after it was followed: the page's links are places to look, not a reading list. */
+a:visited {
+  color: var(--link);
+}
+
 code {
   font-family: var(--font-mono);
   font-size: 0.92em;
@@ -1231,6 +1236,10 @@ main {
 /* Links in the diagram: real <a> elements. Underlined, because the text keeps the colour of its place; the focus ring
    is drawn around the words. */
 .runtime-svg a.rt-link { cursor: pointer; }
+/* Chrome paints the words of a followed link inside SVG text black when their fill is inherited from outside the link
+   (white on a tile became unreadable): the fill and colour are inherited explicitly, followed or not. */
+.runtime-svg a.rt-link,
+.runtime-svg a.rt-link:visited { color: inherit; fill: inherit; }
 .runtime-svg a.rt-link text,
 .runtime-svg text a.rt-link { text-decoration: underline; text-underline-offset: 2px; }
 .runtime-svg a.rt-link:hover text,
