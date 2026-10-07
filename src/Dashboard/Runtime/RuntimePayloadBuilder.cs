@@ -155,7 +155,7 @@ public static class RuntimePayloadBuilder
                 node,
                 "Not probed",
                 "not probed from the browser",
-                $"{node.Name}: Azure SQL takes no call from a browser, and this page checks no web app that uses it.");
+                $"{node.Name}: the database takes no call from a browser, and this page checks no web app that uses it.");
         }
 
         var passed = clients.Where(entry => entry.Target.Last is { State: HealthState.Healthy, Probe: ProbeKind.Health }).ToList();
@@ -180,7 +180,7 @@ public static class RuntimePayloadBuilder
                 queries.Count == 0 ? null : string.Create(CultureInfo.InvariantCulture, $"{queries.Sum(telemetry => telemetry.SqlOfTraffic)} queries/min"),
                 [new RuntimeTileLine(line, "ok")],
                 null,
-                $"{node.Name}: reachable. Azure SQL takes no call from a browser; the health check of {names} connected to it (last {TimeText.Clock(latest, zone)}).{background}");
+                $"{node.Name}: reachable. The database takes no call from a browser; the health check of {names} connected to it (last {TimeText.Clock(latest, zone)}).{background}");
         }
 
         if (clients.All(entry => entry.Target.Last is { Probe: ProbeKind.Liveness }))
@@ -221,21 +221,35 @@ public static class RuntimePayloadBuilder
             lines.AddRange(TelemetryLines(node, target, telemetry));
         }
 
-        var role = target.Role ?? (target.IsPrimary ? NodeInfo.PrimaryRole : NodeInfo.StandbyRole);
-        lines.Add(ReferenceEquals(target, entry.Expected)
-            ? new RuntimeTileLine($"{role}: serves traffic", "serving")
-            : target.State switch
-            {
-                HealthState.Healthy => new RuntimeTileLine($"{role}: ready, no traffic", "muted"),
-                HealthState.Pending => new RuntimeTileLine(role, "muted"),
-                _ => new RuntimeTileLine($"{role}: not serving", "plain"),
-            });
+        lines.Add(entry.Assessment.OnlyNode is null ? RoleLine(target, entry.Expected) : SingleNodeLine(target, entry.Expected));
         return Checked(node, target, lines, zone) with
         {
             Link = Link(target, LinkSet.LiveMetrics, node.Name),
             NameLink = Link(target, LinkSet.Portal, node.Name),
         };
     }
+
+    /// <summary>A node's role and whether the deployable's traffic goes through it.</summary>
+    private static RuntimeTileLine RoleLine(TargetStatus target, TargetStatus? expected)
+    {
+        var role = target.Role ?? (target.IsPrimary ? NodeInfo.PrimaryRole : NodeInfo.StandbyRole);
+        return ReferenceEquals(target, expected)
+            ? new RuntimeTileLine($"{role}: serves traffic", "serving")
+            : target.State switch
+            {
+                HealthState.Healthy => new RuntimeTileLine($"{role}: ready, no traffic", "muted"),
+                HealthState.Pending => new RuntimeTileLine(role, "muted"),
+                _ => new RuntimeTileLine($"{role}: not serving", "plain"),
+            };
+    }
+
+    /// <summary>
+    /// The same line for the only node of a deployable without a Front Door endpoint: no role, since nothing stands by.
+    /// </summary>
+    private static RuntimeTileLine SingleNodeLine(TargetStatus target, TargetStatus? expected) =>
+        ReferenceEquals(target, expected) ? new RuntimeTileLine("serves traffic", "serving")
+        : target.State == HealthState.Pending ? new RuntimeTileLine("checking", "muted")
+        : new RuntimeTileLine("not serving", "plain");
 
     private static RuntimeLink? Link(TargetStatus target, string key, string subject) =>
         RuntimeLink.To(target.Links[key], LinkText.For(key, subject));

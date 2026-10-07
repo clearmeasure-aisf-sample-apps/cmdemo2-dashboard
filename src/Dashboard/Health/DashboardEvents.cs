@@ -21,6 +21,9 @@ public enum EventKind
 
     /// <summary>The traffic button was started or stopped.</summary>
     Traffic,
+
+    /// <summary>Something changed in the cluster the system runs in: its status file, a node, a pod, the AKS service.</summary>
+    Cluster,
 }
 
 public enum EventLevel
@@ -33,7 +36,10 @@ public enum EventLevel
 
 /// <summary>Something this page observed: when, where and in words.</summary>
 /// <param name="Environment">The environment; null for an event of the page itself.</param>
-/// <param name="Node">The node (its region, or its name), "Front Door", or the deployable for an event of all its nodes.</param>
+/// <param name="Node">
+/// The node (its region, or its name), "Front Door", or the deployable for an event of all its nodes; "cluster" or
+/// "AKS" for an event of the cluster view.
+/// </param>
 public sealed record DashboardEvent(DateTimeOffset At, EventKind Kind, EventLevel Level, string? Environment, string? Node, string Text);
 
 /// <summary>The last events this page observed since it was opened, newest first.</summary>
@@ -193,6 +199,8 @@ public static class EventDetector
         DashboardEvent Event(EventLevel level, string text) => new(at, EventKind.Serving, level, environment, deployable, text);
         return after.State switch
         {
+            // A single node whose role is not primary: nothing failed over, it serves again or still.
+            ServingState.FailedOver when after.OnlyNode is not null => known && before!.State == ServingState.Down ? Event(EventLevel.Good, $"{to} serves traffic again.") : null,
             ServingState.FailedOver when from is not null => Event(EventLevel.Warning, $"Failover: {from} → {to}. {after.FailoverDetail}"),
             ServingState.FailedOver => Event(EventLevel.Warning, $"Failed over to {to}. {after.FailoverDetail}"),
             ServingState.Primary when known && before!.State == ServingState.FailedOver => Event(EventLevel.Good, $"Failback: {from} → {to}. The primary is healthy again."),
@@ -203,7 +211,10 @@ public static class EventDetector
         };
     }
 
-    /// <summary>The version pinned in Git for a deployable changed between two readings of <c>versions.json</c>.</summary>
+    /// <summary>
+    /// The version pinned in Git for a deployable changed between two readings of the file that holds its pin: the
+    /// environment's <c>versions.json</c>, or the deployable's own Kustomize file.
+    /// </summary>
     public static DashboardEvent? Pinned(PinnedVersions before, PinnedVersions after, string environment, string deployable, DateTimeOffset at)
     {
         ArgumentNullException.ThrowIfNull(before);

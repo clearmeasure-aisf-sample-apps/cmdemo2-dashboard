@@ -137,6 +137,21 @@ public class EventDetectorTests
     }
 
     [Fact]
+    public void AnOnlyNodeThatStopsAndServesAgainNamesNoFailover()
+    {
+        static ServingAssessment Only(HealthState state, bool primary = true) =>
+            ServingAssessment.Assess([new NodeHealth("uat-ui", null, primary, state)], null);
+
+        Assert.Null(EventDetector.Serving(null, Only(HealthState.Healthy), "uat", "ui", Now));
+        Assert.Equal((EventLevel.Problem, "No healthy node: uat-ui no longer serves, and nothing else can."), Text(EventDetector.Serving(Only(HealthState.Healthy), Only(HealthState.Unreachable), "uat", "ui", Now)));
+        Assert.Equal((EventLevel.Good, "uat-ui serves traffic again."), Text(EventDetector.Serving(Only(HealthState.Unreachable), Only(HealthState.Healthy), "uat", "ui", Now)));
+
+        // A role other than primary changes nothing: one node cannot fail over.
+        Assert.Null(EventDetector.Serving(null, Only(HealthState.Healthy, primary: false), "uat", "ui", Now));
+        Assert.Equal((EventLevel.Good, "uat-ui serves traffic again."), Text(EventDetector.Serving(Only(HealthState.Unreachable, primary: false), Only(HealthState.Healthy, primary: false), "uat", "ui", Now)));
+    }
+
+    [Fact]
     public void TheSameDecisionIsNoEvent()
     {
         Assert.Null(EventDetector.Serving(Serving(HealthState.Healthy, HealthState.Healthy), Serving(HealthState.Healthy, HealthState.Unreachable), "uat", "ui", Now));

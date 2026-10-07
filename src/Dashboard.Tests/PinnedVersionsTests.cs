@@ -162,6 +162,151 @@ public class PinnedVersionsTests
         Assert.Equal("no answer within 10 s", pinned.Detail);
     }
 
+    private static readonly Uri Kustomization =
+        new("https://raw.githubusercontent.com/example-org/demo-system/main/gitops/environments/uat/ui/kustomization.yaml");
+
+    private const string KustomizationFile = """
+        apiVersion: kustomize.config.k8s.io/v1beta1
+        kind: Kustomization
+        namespace: demo-uat
+        resources:
+          - ../../../base/ui
+        images:
+          - name: demo.azurecr.io/demo/ui
+            newTag: "2.4.15"
+        """;
+
+    [Fact]
+    public void AKustomizationPinsTheVersionOfItsFirstNewTag()
+    {
+        var pinned = PinnedVersions.ParseKustomization(KustomizationFile, "ui");
+
+        Assert.Equal(PinnedVersionsState.Read, pinned.State);
+        Assert.Null(pinned.Detail);
+        Assert.Equal("2.4.15", pinned.Of("ui"));
+        Assert.Equal(["ui"], pinned.Versions.Keys);
+    }
+
+    [Theory]
+    [InlineData("newTag: \"2.4.15\"", "2.4.15")]
+    [InlineData("newTag: '2.4.15'", "2.4.15")]
+    [InlineData("newTag: 2.4.15", "2.4.15")]
+    [InlineData("newTag: 2.4.15 # pinned by the deployment", "2.4.15")]
+    [InlineData("newTag: \"2.4.15\" # pinned by the deployment", "2.4.15")]
+    [InlineData("newTag: '2.4.15'# pinned", "2.4.15")]
+    [InlineData("newTag:   2.4.15   ", "2.4.15")]
+    [InlineData("newTag: 2.4.15\r", "2.4.15")]
+    [InlineData("newTag : 2.4.15", "2.4.15")]
+    [InlineData("newTag: 2.4.15-rc.1", "2.4.15-rc.1")]
+    [InlineData("newTag: sha#1", "sha#1")]
+    [InlineData("newTag: \"2.4.15+0a1b2c3\"", "2.4.15")]
+    public void TheValueMayBeQuotedOrNotAndATrailingCommentIsLeftOut(string line, string version)
+    {
+        var pinned = PinnedVersions.ParseKustomization($"images:\n  - name: demo.azurecr.io/demo/ui\n    {line}\n", "ui");
+
+        Assert.Equal(PinnedVersionsState.Read, pinned.State);
+        Assert.Equal(version, pinned.Of("ui"));
+    }
+
+    [Fact]
+    public void TheFirstNewTagCountsAlsoAsTheFirstKeyOfAnImageAndACommentedOneDoesNot()
+    {
+        var pinned = PinnedVersions.ParseKustomization(
+            "images:\n  # newTag: 1.0.0\n  - newTag: 2.4.15\n    name: demo.azurecr.io/demo/ui\n  - name: demo.azurecr.io/demo/job\n    newTag: 9.9.9\n",
+            "ui");
+
+        Assert.Equal("2.4.15", pinned.Of("ui"));
+    }
+
+    [Theory]
+    [InlineData(null, "the file is empty")]
+    [InlineData("", "the file is empty")]
+    [InlineData(" \n", "the file is empty")]
+    [InlineData("apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n  - ../../../base/ui\n", "the file has no newTag entry")]
+    [InlineData("images:\n  - name: ui\n    digest: sha256:0a1b\n", "the file has no newTag entry")]
+    [InlineData("images:\n  - name: ui\n    newTagSuffix: 2.4.15\n    # newTag: 2.4.15\n", "the file has no newTag entry")]
+    [InlineData("<!DOCTYPE html><html></html>", "the file has no newTag entry")]
+    [InlineData("""{ "ui": "2.4.15" }""", "the file has no newTag entry")]
+    [InlineData("images:\n  - name: ui\n    newTag:\n", "the first newTag entry of the file has no value")]
+    [InlineData("images:\n  - name: ui\n    newTag: \"\"\n", "the first newTag entry of the file has no value")]
+    [InlineData("images:\n  - name: ui\n    newTag: # not set\n  - name: job\n    newTag: 9.9.9\n", "the first newTag entry of the file has no value")]
+    public void AKustomizationWithoutANewTagIsUnavailableWithTheReason(string? yaml, string reason)
+    {
+        var pinned = PinnedVersions.ParseKustomization(yaml, "ui");
+
+        Assert.Equal(PinnedVersionsState.Unavailable, pinned.State);
+        Assert.Equal(reason, pinned.Detail);
+        Assert.Empty(pinned.Versions);
+        Assert.Null(pinned.Of("ui"));
+    }
+
+    [Theory]
+    [InlineData("https://raw.example.net/org/demo-system/main/gitops/environments/uat/ui/kustomization.yaml", "kustomization.yaml")]
+    [InlineData("https://raw.example.net/org/demo-system/main/gitops/environments/uat/ui/kustomization.yml?token=1#L3", "kustomization.yml")]
+    [InlineData("https://raw.example.net/org/demo-system/main/gitops/environments/uat/my%20app/", "my app")]
+    [InlineData("https://raw.example.net", "kustomization.yaml")]
+    public void TheFileOfAPinIsNamedByTheLastPartOfItsAddress(string address, string file) =>
+        Assert.Equal(file, PinnedVersions.FileOf(new Uri(address)));
+
+    [Fact]
+    public async Task AKustomizationIsReadWithOneGetWithoutTheBrowserCache()
+    {
+        var handler = new StubHandler(_ => StubHandler.Answer(HttpStatusCode.OK, KustomizationFile));
+
+        var pinned = await Reader(handler).ReadKustomizationAsync(Kustomization, "ui", CancellationToken.None);
+
+        Assert.Equal(PinnedVersionsState.Read, pinned.State);
+        Assert.Equal("2.4.15", pinned.Of("ui"));
+        var request = Assert.Single(handler.Requests);
+        Assert.Equal(HttpMethod.Get, request.Method);
+        Assert.Equal(Kustomization, request.RequestUri);
+        Assert.Equal("no-store", NodeProberTests.FetchOption(request, "cache"));
+
+        // A request without headers of its own needs no CORS preflight.
+        Assert.Empty(request.Headers);
+    }
+
+    [Fact]
+    public async Task AKustomizationThatDoesNotExistIsMissing()
+    {
+        var handler = new StubHandler(_ => StubHandler.Answer(HttpStatusCode.NotFound, "404: Not Found"));
+
+        var pinned = await Reader(handler).ReadKustomizationAsync(Kustomization, "ui", CancellationToken.None);
+
+        Assert.Equal(PinnedVersionsState.Missing, pinned.State);
+        Assert.Empty(pinned.Versions);
+    }
+
+    [Fact]
+    public async Task AKustomizationWithoutANewTagIsUnavailable()
+    {
+        var handler = new StubHandler(_ => StubHandler.Answer(HttpStatusCode.OK, "kind: Kustomization\nresources:\n  - ../../../base/ui\n"));
+
+        var pinned = await Reader(handler).ReadKustomizationAsync(Kustomization, "ui", CancellationToken.None);
+
+        Assert.Equal(PinnedVersionsState.Unavailable, pinned.State);
+        Assert.Equal("the file has no newTag entry", pinned.Detail);
+    }
+
+    [Fact]
+    public async Task AKustomizationFailsToBeReadLikeVersionsJson()
+    {
+        var failing = new StubHandler(_ => StubHandler.Answer(HttpStatusCode.BadGateway, KustomizationFile));
+        var offline = new StubHandler(_ => throw new HttpRequestException("TypeError: Failed to fetch"));
+        var hanging = new StubHandler((_, cancellationToken) => StubHandler.NeverAsync(cancellationToken));
+
+        var status = await Reader(failing).ReadKustomizationAsync(Kustomization, "ui", CancellationToken.None);
+        var network = await Reader(offline).ReadKustomizationAsync(Kustomization, "ui", CancellationToken.None);
+        var reading = Reader(hanging).ReadKustomizationAsync(Kustomization, "ui", CancellationToken.None);
+        _time.Advance(NodeProber.DefaultTimeout);
+        var timeout = await reading.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal((PinnedVersionsState.Unavailable, "the server answered HTTP 502"), (status.State, status.Detail));
+        Assert.Equal(PinnedVersionsState.Unavailable, network.State);
+        Assert.Contains("could not read an answer", network.Detail, StringComparison.Ordinal);
+        Assert.Equal((PinnedVersionsState.Unavailable, "no answer within 10 s"), (timeout.State, timeout.Detail));
+    }
+
     [Fact]
     public async Task TheCallersCancellationIsNotAResult()
     {

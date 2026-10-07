@@ -88,7 +88,25 @@ public sealed class DeployableStatus
         FrontDoor = info.FrontDoor is null ? null : new TargetStatus(TargetKind.FrontDoor, "Front Door", info.FrontDoor, links: info.Links);
         Nodes = [.. info.Nodes.Select(node => new TargetStatus(TargetKind.Node, node.Name, node.Url, node.Region, node.Role, node.Links))];
         BuildSource = info.BuildPath is null ? null : Nodes.FirstOrDefault(node => node.IsPrimary) ?? (Nodes.Count > 0 ? Nodes[0] : null);
+        Pinned = info.PinUrl is null ? null : PinnedVersions.Pending;
     }
+
+    /// <summary>
+    /// The last reading of the deployable's own pin (<c>pinUrl</c>, a Kustomize file); a failed reading replaces a good
+    /// one. Null when the topology names none: the environment's <c>versions.json</c> then holds the pin.
+    /// </summary>
+    public PinnedVersions? Pinned { get; private set; }
+
+    /// <summary>The last reading of the deployable's own pin that succeeded: what a new reading is compared with to find a new pin.</summary>
+    public PinnedVersions? LastReadPinned { get; private set; }
+
+    public void RecordPin(PinnedVersions pinned)
+    {
+        ArgumentNullException.ThrowIfNull(pinned);
+        Pinned = pinned;
+    }
+
+    public void RememberPin(PinnedVersions pinned) => LastReadPinned = pinned;
 
     /// <summary>The node asked for the build facts: the primary; null when the topology names no <c>buildPath</c>.</summary>
     public TargetStatus? BuildSource { get; }
@@ -124,6 +142,9 @@ public sealed class DeployableStatus
     public DeployableInfo Info { get; }
 
     public TargetStatus? FrontDoor { get; }
+
+    /// <summary>True when the deployable has a Front Door endpoint: what a tile says about Front Door is shown only then.</summary>
+    public bool HasFrontDoor => FrontDoor is not null;
 
     public IReadOnlyList<TargetStatus> Nodes { get; }
 
@@ -180,14 +201,29 @@ public sealed class EnvironmentStatus
     public void RememberPinned(PinnedVersions pinned) => LastReadPinned = pinned;
 
     /// <summary>
-    /// The pinned version of a deployable next to the versions its nodes run; null when the topology names no
-    /// <c>versions.json</c> for this environment.
+    /// The pinned version of a deployable next to the versions its nodes run: from the deployable's own pin where the
+    /// topology names one (<c>pinUrl</c>), from the environment's <c>versions.json</c> otherwise; null when the
+    /// topology names neither.
     /// </summary>
     public VersionAssessment? AssessVersions(DeployableStatus deployable)
     {
         ArgumentNullException.ThrowIfNull(deployable);
-        return Info.VersionsUrl is null
-            ? null
-            : VersionAssessment.Assess(Pinned, deployable.Info.Name, deployable.Nodes.Select(node => node.ToNodeVersion()));
+        var nodes = deployable.Nodes.Select(node => node.ToNodeVersion());
+        if (deployable.Pinned is { } own)
+        {
+            return VersionAssessment.Assess(own, deployable.Info.Name, nodes, deployable.Info.PinFile);
+        }
+
+        return Info.VersionsUrl is null ? null : VersionAssessment.Assess(Pinned, deployable.Info.Name, nodes);
+    }
+
+    /// <summary>
+    /// The page with the history of a deployable's pin: the deployable's own (<c>pinHistoryUrl</c>), or else the
+    /// history of the environment's <c>versions.json</c>; null without both.
+    /// </summary>
+    public Uri? PinHistoryOf(DeployableStatus deployable)
+    {
+        ArgumentNullException.ThrowIfNull(deployable);
+        return deployable.Info.PinHistoryUrl ?? Info.VersionsHistoryUrl;
     }
 }

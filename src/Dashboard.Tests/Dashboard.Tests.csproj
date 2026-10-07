@@ -17,6 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="Dashboard.Cluster" />
     <Using Include="Dashboard.Health" />
     <Using Include="Dashboard.Runtime" />
     <Using Include="Xunit" />
@@ -26,6 +27,12 @@
   <ItemGroup>
     <None Include="..\Dashboard\wwwroot\topology.json" Link="topology.sample.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Dashboard\wwwroot\runtime\*.json;..\Dashboard\wwwroot\runtime\*.svg" Link="runtime.sample\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- The cluster view's two files, as their producers write them. The app ships no sample of them: the sample
+       topology names no cluster, since a topology takes absolute addresses only. -->
+  <ItemGroup>
+    <None Include="Samples\*.json" Link="cluster.sample\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

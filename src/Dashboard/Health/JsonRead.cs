@@ -5,7 +5,7 @@ namespace Dashboard.Health;
 
 /// <summary>
 /// Reads the optional parts of an answer the dashboard does not own (a node's telemetry and build facts, the delivery
-/// file): a part that is absent or of another type is null, never an error.
+/// file, the cluster's files): a part that is absent or of another type is null, never an error.
 /// </summary>
 internal static class JsonRead
 {
@@ -26,6 +26,17 @@ internal static class JsonRead
         parent is { ValueKind: JsonValueKind.Object } value && value.TryGetProperty(name, out var number) && number.ValueKind == JsonValueKind.Number
             && number.TryGetDouble(out var real) && double.IsFinite(real) && real >= 0
             ? real
+            : null;
+
+    /// <summary>True or false; null for anything else.</summary>
+    public static bool? Flag(JsonElement? parent, string name) =>
+        parent is { ValueKind: JsonValueKind.Object } value && value.TryGetProperty(name, out var flag)
+            ? flag.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => null,
+            }
             : null;
 
     /// <summary>A count: a number that is not negative, rounded.</summary>

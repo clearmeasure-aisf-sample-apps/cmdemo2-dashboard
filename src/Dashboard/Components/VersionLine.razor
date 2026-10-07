@@ -24,8 +24,8 @@
             @if (HistoryUrl is { } history)
             {
                 <a href="@history.AbsoluteUri" target="_blank" rel="noopener"
-                   aria-label="@($"Pin history of {EnvironmentName} (opens in a new tab)")"
-                   title="@($"The history of {PinnedVersions.FileName} of {EnvironmentName} on GitHub (opens in a new tab)")">Pin history</a>
+                   aria-label="@($"Pin history of {HistoryOf} (opens in a new tab)")"
+                   title="@($"The history of {(HistoryIsOwn ? PinFile : PinnedVersions.FileName)} of {HistoryOf} on GitHub (opens in a new tab)")">Pin history</a>
             }
             @if (LogsUrl is { } logs)
             {
@@ -38,7 +38,10 @@
 </div>
 
 @code {
-    /// <summary>Null when the topology names no versions.json for the environment: the line then holds the links only.</summary>
+    /// <summary>
+    /// Null when the topology names no file with the pin (no versions.json for the environment, no pinUrl for the
+    /// deployable): the line then holds the links only.
+    /// </summary>
     [Parameter]
     public VersionAssessment? Assessment { get; set; }
 
@@ -54,13 +57,24 @@
     [Parameter]
     public Uri? HistoryUrl { get; set; }
 
+    /// <summary>The name of the file that holds the pin: versions.json, or the deployable's own Kustomize file.</summary>
+    [Parameter]
+    public string PinFile { get; set; } = PinnedVersions.FileName;
+
+    /// <summary>True when the history is the deployable's own (pinHistoryUrl), not that of the environment's versions.json.</summary>
+    [Parameter]
+    public bool HistoryIsOwn { get; set; }
+
     /// <summary>The requests of the deployable's role as a Logs query (<c>links.logs</c> of the deployable); null without it.</summary>
     [Parameter]
     public Uri? LogsUrl { get; set; }
 
     private string PinnedHelp =>
         $"Pinned: the version the last deployment of {DeployableName} to {EnvironmentName} committed to "
-        + $"{PinnedVersions.FileName} in the system repository. It is compared with the version each node reports.";
+        + $"{PinFile} in the system repository. It is compared with the version each node reports.";
+
+    /// <summary>Whose pins the history shows: the environment's, or this deployable's in it.</summary>
+    private string HistoryOf => HistoryIsOwn ? $"{DeployableName} in {EnvironmentName}" : EnvironmentName;
 
     /// <summary>The style of a state: in sync, differs, or neutral for everything that is not known.</summary>
     internal static string Level(VersionState state) => state switch

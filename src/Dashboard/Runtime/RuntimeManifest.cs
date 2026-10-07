@@ -27,7 +27,7 @@ public enum RuntimeNodeKind
     /// <summary>A web app (a regional node).</summary>
     WebApp,
 
-    /// <summary>The environment's Azure SQL database: the browser cannot ask it.</summary>
+    /// <summary>The environment's database (Azure SQL, or SQL Server in a cluster): the browser cannot ask it.</summary>
     Sql,
 
     /// <summary>A Static Web App: the dashboard.</summary>

@@ -193,6 +193,20 @@ public class VersionAssessmentTests
     }
 
     [Fact]
+    public void TheWordsNameTheFileThatHoldsThePin()
+    {
+        // A deployable whose pin is its own Kustomize file: the same states, with that file's name.
+        var missing = VersionAssessment.Assess(PinnedVersions.Missing, "ui", [West(Healthy, "2.4.7")], "kustomization.yaml");
+        var unknown = VersionAssessment.Assess(PinnedVersions.ParseKustomization("kind: Kustomization\n", "ui"), "ui", [West(Healthy, "2.4.7")], "kustomization.yaml");
+        var read = VersionAssessment.Assess(PinnedVersions.ParseKustomization("images:\n  - name: ui\n    newTag: 2.4.7\n", "ui"), "ui", [West(Healthy, "2.4.7")], "kustomization.yaml");
+
+        Assert.Equal("No pinned version. kustomization.yaml was not found: nothing was deployed here yet, or the repository is not public.", missing.Text);
+        Assert.Equal(VersionState.PinnedUnknown, unknown.State);
+        Assert.Equal("Pinned version not known. kustomization.yaml could not be read: the file has no newTag entry.", unknown.Text);
+        Assert.Equal("Pinned 2.4.7. In sync: westus3 runs 2.4.7.", read.Text);
+    }
+
+    [Fact]
     public void BeforeTheFileIsReadThePinnedVersionIsPending()
     {
         var assessment = VersionAssessment.Assess(PinnedVersions.Pending, "ui", [West(Healthy, "2.4.7")]);

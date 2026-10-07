@@ -23,7 +23,7 @@ public sealed record NodeVersion(string Label, HealthState State, string? Versio
 
 public enum VersionState
 {
-    /// <summary>The environment's <c>versions.json</c> has not been read yet.</summary>
+    /// <summary>The file with the pin (the environment's <c>versions.json</c>, or the deployable's own) has not been read yet.</summary>
     Pending,
 
     /// <summary>The file could not be read: the pinned version is not known.</summary>
@@ -62,11 +62,16 @@ public sealed record VersionAssessment(
     /// <summary>The whole line in words, for a tooltip and for tests.</summary>
     public string Text => Detail is null ? Headline : $"{Headline}. {Detail}";
 
-    public static VersionAssessment Assess(PinnedVersions pinned, string deployable, IEnumerable<NodeVersion> nodes)
+    /// <param name="pinned">The last reading of the file that holds the deployable's pin.</param>
+    /// <param name="deployable">The deployable's name: its key in the reading.</param>
+    /// <param name="nodes">What the deployable's nodes run.</param>
+    /// <param name="file">The name of that file, for the words; <c>versions.json</c> when not given.</param>
+    public static VersionAssessment Assess(PinnedVersions pinned, string deployable, IEnumerable<NodeVersion> nodes, string? file = null)
     {
         ArgumentNullException.ThrowIfNull(pinned);
         ArgumentNullException.ThrowIfNull(deployable);
         ArgumentNullException.ThrowIfNull(nodes);
+        file ??= PinnedVersions.FileName;
 
         switch (pinned.State)
         {
@@ -77,12 +82,12 @@ public sealed record VersionAssessment(
                 return Without(
                     VersionState.NotDeployed,
                     "No pinned version",
-                    $"{PinnedVersions.FileName} was not found: nothing was deployed here yet, or the repository is not public.");
+                    $"{file} was not found: nothing was deployed here yet, or the repository is not public.");
             case PinnedVersionsState.Unavailable:
                 return Without(
                     VersionState.PinnedUnknown,
                     "Pinned version not known",
-                    $"{PinnedVersions.FileName} could not be read: {pinned.Detail ?? "no reason given"}.");
+                    $"{file} could not be read: {pinned.Detail ?? "no reason given"}.");
         }
 
         if (VersionText.Display(pinned.Of(deployable)) is not { } version)
@@ -90,7 +95,7 @@ public sealed record VersionAssessment(
             return Without(
                 VersionState.NotDeployed,
                 "No pinned version",
-                $"{PinnedVersions.FileName} has no entry for {deployable}: it was not deployed here yet.");
+                $"{file} has no entry for {deployable}: it was not deployed here yet.");
         }
 
         var all = nodes.ToList();

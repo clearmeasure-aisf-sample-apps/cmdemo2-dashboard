@@ -55,9 +55,10 @@ public static class TopologyParser
             var system = ReadSystem(root, errors);
             var generated = ReadTime(root, "generated");
             var environments = ReadEnvironments(root, errors);
+            var cluster = ReadCluster(root, errors);
             return errors.Count > 0
                 ? new TopologyParseResult(null, errors)
-                : new TopologyParseResult(new Topology(system, generated, environments), []);
+                : new TopologyParseResult(new Topology(system, generated, environments, cluster), []);
         }
     }
 
@@ -107,10 +108,53 @@ public static class TopologyParser
             var versions = ReadOptionalAddress(element, "versionsUrl", path, errors);
             var history = ReadOptionalAddress(element, "versionsHistoryUrl", path, errors);
             var deployables = ReadDeployables(element, path, errors);
-            environments.Add(new EnvironmentInfo(name, ReadText(element, "tier"), deployables, versions, history, ReadLinks(element)));
+            environments.Add(new EnvironmentInfo(
+                name,
+                ReadText(element, "tier"),
+                deployables,
+                versions,
+                history,
+                ReadLinks(element),
+                ReadText(element, "namespace")));
         }
 
         return environments;
+    }
+
+    /// <summary>
+    /// The optional <c>cluster</c>: null when it is absent or <c>null</c>, and the page then has no cluster view. Its
+    /// addresses are held to the rule of every address the page calls or links to; so are the links it knows
+    /// (<see cref="LinkSet.Portal"/>, <see cref="LinkSet.Workloads"/>), and any other key of <c>links</c> is ignored.
+    /// </summary>
+    private static ClusterInfo? ReadCluster(JsonElement root, List<string> errors)
+    {
+        const string Path = "cluster";
+        if (!root.TryGetProperty(Path, out var cluster) || cluster.ValueKind == JsonValueKind.Null)
+        {
+            return null;
+        }
+
+        if (cluster.ValueKind != JsonValueKind.Object)
+        {
+            errors.Add($"{Path}: not an object.");
+            return null;
+        }
+
+        var status = ReadOptionalAddress(cluster, "statusUrl", Path, errors);
+        var service = ReadOptionalAddress(cluster, "serviceUrl", Path, errors);
+        var found = new Dictionary<string, Uri>(StringComparer.Ordinal);
+        if (cluster.TryGetProperty("links", out var links) && links.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var key in new[] { LinkSet.Portal, LinkSet.Workloads })
+            {
+                if (ReadOptionalAddress(links, key, $"{Path}.links", errors) is { } address)
+                {
+                    found[key] = address;
+                }
+            }
+        }
+
+        return new ClusterInfo(ReadText(cluster, "name"), status, service, found.Count == 0 ? null : new LinkSet(found));
     }
 
     private static List<DeployableInfo> ReadDeployables(JsonElement environment, string environmentPath, List<string> errors)
@@ -133,6 +177,8 @@ public static class TopologyParser
 
             var project = ReadOptionalAddress(element, "projectUrl", path, errors);
             var frontDoor = ReadOptionalAddress(element, "frontDoor", path, errors);
+            var pin = ReadOptionalAddress(element, "pinUrl", path, errors);
+            var pinHistory = ReadOptionalAddress(element, "pinHistoryUrl", path, errors);
             var nodes = ReadNodes(element, path, errors);
             deployables.Add(new DeployableInfo(
                 ReadText(element, "name") ?? "app",
@@ -145,7 +191,9 @@ public static class TopologyParser
                 ReadText(element, "telemetryPath") is { Length: > 0 } telemetry ? AsPath(telemetry) : null,
                 ReadPaths(element, "trafficPaths", path, errors),
                 ReadText(element, "buildPath") is { Length: > 0 } build ? AsPath(build) : null,
-                ReadLinks(element)));
+                ReadLinks(element),
+                pin,
+                pinHistory));
         }
 
         return deployables;

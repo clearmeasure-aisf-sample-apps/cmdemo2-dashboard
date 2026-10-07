@@ -10,7 +10,7 @@
         <span class="chip">@Subtitle</span>
         @if (IsExpected)
         {
-            <span class="chip chip--serving" title="The first healthy node in priority order: primary, then standby">serves traffic</span>
+            <span class="chip chip--serving" title="@ServesHelp">serves traffic</span>
         }
     </p>
 
@@ -92,10 +92,14 @@
                         <DeepLink Href="Target.Links[LinkSet.Dependencies]" Title="@LinkText.For(LinkSet.Dependencies, Target.Name)">@Count(telemetry.SqlOfTraffic)<span class="unit">/min</span></DeepLink>
                     </dd>
                 </div>
-                <div>
-                    <dt title="Requests Front Door forwarded to this web app">Front Door</dt>
-                    <dd><span>@Count(telemetry.FromFrontDoor)<span class="unit">/min</span></span></dd>
-                </div>
+                @* Only where the deployable has a Front Door endpoint: without one nothing forwards. *@
+                @if (Deployable is { HasFrontDoor: true })
+                {
+                    <div>
+                        <dt title="Requests Front Door forwarded to this web app">Front Door</dt>
+                        <dd><span>@Count(telemetry.FromFrontDoor)<span class="unit">/min</span></span></dd>
+                    </div>
+                }
             </dl>
         </div>
 
@@ -190,6 +194,11 @@
     private string ResourceName => IsFrontDoor ? Target.Url.Host.Split('.')[0] : Target.Name;
 
     private string Subtitle => IsFrontDoor ? "public address" : Target.Role ?? "node";
+
+    /// <summary>Why this node serves; a deployable's only node without a Front Door endpoint has no order to explain.</summary>
+    private string ServesHelp => Deployable is { HasFrontDoor: false, Nodes.Count: 1 }
+        ? "The deployable's only node, and it is healthy"
+        : "The first healthy node in priority order: primary, then standby";
 
     private Uri? StateLink => IsFrontDoor ? null : Target.Links[LinkSet.LiveMetrics];
 

@@ -310,6 +310,101 @@ public class RuntimePayloadBuilderTests
         Assert.Equal((RuntimePayloadBuilder.NoNumber, null), (payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Number, payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Text));
     }
 
+    /// <summary>
+    /// A cluster's environment: the app is one node at one public address, without a Front Door endpoint, and the
+    /// database runs next to it. The diagram has the kinds the page already updates.
+    /// </summary>
+    private static readonly RuntimeManifest ClusterManifest = new(
+        "uat",
+        [
+            new RuntimeNode("browser", RuntimeNodeKind.Person, "Browser"),
+            new RuntimeNode("app_ui_primary", RuntimeNodeKind.WebApp, "uat-ui", new Uri("https://ui.uat.example.net"), "ui", "primary", "westus3", "region_primary"),
+            new RuntimeNode("sqldb", RuntimeNodeKind.Sql, "sql-uat", null, null, null, "westus3", "region_primary"),
+        ],
+        [new RuntimeRegion("region_primary", "westus3", ["primary", "data"])],
+        [
+            new RuntimeEdge("browser-to-app_ui_primary", "browser", "app_ui_primary", RuntimeEdgeKind.Public),
+            new RuntimeEdge("app_ui_primary-to-sqldb", "app_ui_primary", "sqldb", RuntimeEdgeKind.Sql),
+        ]);
+
+    private static readonly string[] WordsOfSeveralNodes = ["primary", "standby", "region", "failover", "failed over", "Front Door"];
+
+    private static EnvironmentStatus Cluster(string? frontDoor = null)
+    {
+        var address = frontDoor is null ? "null" : $"\"{frontDoor}\"";
+        return new EnvironmentStatus(TopologyParser.Parse($$"""
+            { "environments": [ { "name": "uat", "deployables": [ {
+                "name": "ui", "frontDoor": {{address}},
+                "nodes": [ { "name": "uat-ui", "role": "primary", "url": "https://ui.uat.example.net" } ] } ] } ] }
+            """).Topology!.Environments[0]);
+    }
+
+    [Theory]
+    [InlineData(null, "checking", "checking", "muted")]
+    [InlineData(200, "healthy", "serves traffic", "serving")]
+    [InlineData(503, "unhealthy", "not serving", "plain")]
+    [InlineData(0, "unreachable", "not serving", "plain")]
+    public void TheOnlyNodeOfADeployableWithoutAFrontDoorServesOrDoesNotAndHasNoRole(int? status, string state, string line, string tone)
+    {
+        var uat = Cluster();
+        if (status is { } answered)
+        {
+            uat.Deployables[0].Nodes[0].Record(answered == 0 ? NoAnswer : Answer(answered));
+        }
+
+        var payload = RuntimePayloadBuilder.Build(ClusterManifest, uat, Page, TimeZoneInfo.Utc);
+
+        var tile = Tile(payload, "app_ui_primary");
+        Assert.Equal(state, tile.State);
+        Assert.Equal(new RuntimeTileLine(line, tone), tile.Lines[^1]);
+        Assert.All(WordsOfSeveralNodes, word =>
+        {
+            Assert.All(tile.Lines, text => Assert.DoesNotContain(word, text.Text, StringComparison.OrdinalIgnoreCase));
+            Assert.DoesNotContain(word, tile.Title, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(word, uat.Deployables[0].Assess().Headline, StringComparison.OrdinalIgnoreCase);
+        });
+
+        // The states of the diagram are the ones a Front Door system has.
+        var expected = status switch { null => "checking", 200 => "active", _ => "down" };
+        Assert.Equal(expected, Edge(payload, "browser-to-app_ui_primary"));
+        Assert.Equal(status switch { null => "checking", 200 => "serving", _ => "down" }, Region(payload, "region_primary"));
+    }
+
+    [Fact]
+    public void AnOnlyNodeBehindAFrontDoorKeepsItsRole()
+    {
+        var uat = Cluster("https://fd-uat.example.net");
+        uat.Deployables[0].FrontDoor!.Record(Answer(200));
+        uat.Deployables[0].Nodes[0].Record(Answer(200));
+        var tdd = Environment("tdd");
+        tdd.Deployables[0].Nodes[0].Record(Answer(503));
+
+        Assert.Equal(new RuntimeTileLine("primary: serves traffic", "serving"), Tile(RuntimePayloadBuilder.Build(ClusterManifest, uat, Page, TimeZoneInfo.Utc), "app_ui_primary").Lines[^1]);
+
+        // The sample's tdd: one web app behind its Front Door endpoint.
+        Assert.Equal(new RuntimeTileLine("primary: not serving", "plain"), Tile(Build(tdd, "tdd"), "app_ui_primary").Lines[^1]);
+        Assert.Equal(new RuntimeTileLine("primary", "muted"), Tile(Build(Environment("tdd"), "tdd"), "app_ui_primary").Lines[^1]);
+    }
+
+    [Fact]
+    public void TheDatabasesWordsNameNoProduct()
+    {
+        var uat = Cluster();
+        uat.Deployables[0].Nodes[0].Record(Answer(200));
+        var unused = ClusterManifest with { Edges = [.. ClusterManifest.Edges.Where(edge => edge.Kind != RuntimeEdgeKind.Sql)] };
+
+        var reachable = Tile(RuntimePayloadBuilder.Build(ClusterManifest, uat, Page, TimeZoneInfo.Utc), "sqldb");
+        var notProbed = Tile(RuntimePayloadBuilder.Build(unused, uat, Page, TimeZoneInfo.Utc), "sqldb");
+
+        Assert.Equal(("healthy", "Reachable"), (reachable.State, reachable.Label));
+        Assert.Equal("sql-uat: reachable. The database takes no call from a browser; the health check of uat-ui connected to it (last 22:00:00).", reachable.Title);
+        Assert.Equal(new RuntimeTileLine("health check of uat-ui passed", "ok"), Assert.Single(reachable.Lines));
+        Assert.Equal("sql-uat: the database takes no call from a browser, and this page checks no web app that uses it.", notProbed.Title);
+
+        // The same words in a Front Door system.
+        Assert.StartsWith("sqldb-cmdemo2-uat: reachable. The database takes no call from a browser; the health check of ", Tile(Build(Uat()), "sqldb").Title, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ThePayloadIsCamelCaseJsonWithoutNulls()
     {
