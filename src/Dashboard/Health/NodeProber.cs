@@ -115,6 +115,10 @@ public sealed class NodeProber(HttpClient http, TimeProvider time)
     public Task<DeliveryReport?> ReadDeliveryAsync(Uri address, CancellationToken cancellationToken) =>
         ReadAsync(address, DeliveryReport.Parse, cancellationToken);
 
+    /// <summary>What the system cost in Azure (<see cref="CostReport"/>), from the address the topology gives.</summary>
+    public Task<CostReport?> ReadCostAsync(Uri address, CancellationToken cancellationToken) =>
+        ReadAsync(address, CostReport.Parse, cancellationToken);
+
     /// <summary>An optional JSON answer, read with the node's timeout: null whenever it cannot be read.</summary>
     private async Task<T?> ReadAsync<T>(Uri address, Func<string?, T?> parse, CancellationToken cancellationToken)
         where T : class

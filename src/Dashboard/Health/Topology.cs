@@ -17,7 +17,8 @@ public sealed record Topology(SystemInfo System, DateTimeOffset? Generated, IRea
 /// <param name="Name">The name the header shows.</param>
 /// <param name="Repository">The system repository on GitHub, where the deployments pin the versions.</param>
 /// <param name="DeliveryUrl">Where the browser reads the system's delivery facts (<c>delivery.json</c>); null without them.</param>
-public sealed record SystemInfo(string Slug, string Name, Uri? Repository = null, Uri? DeliveryUrl = null);
+/// <param name="CostUrl">Where the browser reads what the system cost in Azure (<c>cost.json</c>); null without it.</param>
+public sealed record SystemInfo(string Slug, string Name, Uri? Repository = null, Uri? DeliveryUrl = null, Uri? CostUrl = null);
 
 /// <param name="Name">The environment's name.</param>
 /// <param name="Tier">The tier, for example <c>nonprod</c>.</param>

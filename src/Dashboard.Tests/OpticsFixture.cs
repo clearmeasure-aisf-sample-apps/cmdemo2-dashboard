@@ -5,7 +5,7 @@ namespace Dashboard.Tests;
 
 /// <summary>
 /// A system with everything the optics read: nodes that report telemetry with their process and their build, links
-/// into the portal, and a delivery file. Hosts: fd-uat, uat-west (primary), uat-east (standby), tdd-west, raw.
+/// into the portal, a delivery file and a cost file. Hosts: fd-uat, uat-west (primary), uat-east (standby), tdd-west, raw.
 /// </summary>
 internal static class Optics
 {
@@ -64,6 +64,25 @@ internal static class Optics
           "failover": { "environment": "uat", "at": "2026-10-04T05:00:00Z", "seconds": 44 } }
         """;
 
+    /// <summary>The cost file as the system repository's <c>write-cost.ps1</c> writes it: the numbers of 2026-10-03.</summary>
+    public const string Cost = """
+        { "generated": "2026-10-04T05:00:00Z", "currency": "USD", "asOf": "2026-10-03",
+          "system": { "yesterday": 3.41, "last7Days": 22.1, "monthToDate": 1204.8 },
+          "environments": [
+            { "name": "tdd", "yesterday": 0.0, "last7Days": 1.5, "monthToDate": 1.59, "topServices": [ { "name": "SQL Database", "monthToDate": 0.97 }, { "name": "Azure App Service", "monthToDate": 0.62 } ] },
+            { "name": "uat", "yesterday": 1.52, "last7Days": 9.8, "monthToDate": 11.02, "topServices": [ { "name": "Azure App Service", "monthToDate": 6.1 } ] },
+            { "name": "retired", "yesterday": null, "last7Days": 0.2, "monthToDate": 0.2, "topServices": [ ] },
+            { "name": "shared", "yesterday": 1.1, "last7Days": 7.7, "monthToDate": 8.2, "topServices": [ { "name": "Azure Front Door Service", "monthToDate": 8.11 } ] } ] }
+        """;
+
+    public const string CostPath = "/org/demo-system/status/cost.json";
+
+    /// <summary><see cref="Topology"/> with the address of the cost file next to the one of the delivery facts.</summary>
+    public static readonly string TopologyWithCost = Topology.Replace(
+        "\"deliveryUrl\"",
+        $"\"costUrl\": \"https://raw.example.net{CostPath}\", \"deliveryUrl\"",
+        StringComparison.Ordinal);
+
     /// <summary>A telemetry answer; without an uptime the app reports no <c>process</c>, like an older app.</summary>
     public static string Telemetry(
         int requests = 12,
@@ -96,6 +115,7 @@ internal static class Optics
             "/_telemetry" => StubHandler.Answer(HttpStatusCode.OK, telemetry ?? Telemetry()),
             "/_build" => StubHandler.Answer(HttpStatusCode.OK, Build),
             "/org/demo-system/status/delivery.json" => StubHandler.Answer(HttpStatusCode.OK, Delivery),
+            CostPath => StubHandler.Answer(HttpStatusCode.OK, Cost),
             _ => StubHandler.Answer(HttpStatusCode.OK, "Healthy"),
         };
 

@@ -102,6 +102,26 @@ public class TelemetryTests
     }
 
     [Fact]
+    public void ADeployableWithAnEmptyListOfTrafficPathsTakesNoGeneratedTraffic()
+    {
+        var topology = TopologyParser.Parse("""
+            { "environments": [ { "name": "uat", "deployables": [
+                { "name": "ui", "frontDoor": null, "nodes": [ { "name": "uat/ui", "role": "primary", "url": "https://ui.uat.example.net" } ] },
+                { "name": "dashboard", "frontDoor": null, "healthPath": "/", "trafficPaths": [],
+                  "nodes": [ { "name": "uat/dashboard", "role": "primary", "url": "https://dashboard.uat.example.net" } ] } ] },
+              { "name": "prod", "deployables": [
+                { "name": "dashboard", "frontDoor": null, "healthPath": "/", "trafficPaths": [],
+                  "nodes": [ { "name": "prod/dashboard", "role": "primary", "url": "https://dashboard.prod.example.net" } ] } ] } ] }
+            """).Topology!;
+
+        var uat = TrafficPlan.For(topology.Environments[0])!;
+
+        Assert.Equal(["https://ui.uat.example.net/"], uat.Addresses.Select(address => address.AbsoluteUri));
+        Assert.Equal(["ui at ui.uat.example.net"], uat.Targets);
+        Assert.Null(TrafficPlan.For(topology.Environments[1]));
+    }
+
+    [Fact]
     public async Task ARoundReadsTheTelemetryOfEveryWebAppButNotOfFrontDoor()
     {
         var time = new SignallingTimeProvider();

@@ -8,11 +8,15 @@ public sealed class DashboardMonitor
     /// <summary>How often the delivery facts are read: they change with a deployment, and GitHub caches the file for minutes.</summary>
     public static readonly TimeSpan DeliveryInterval = TimeSpan.FromMinutes(5);
 
+    /// <summary>How often the cost is read: its file changes a few times a day at most, and is read as the delivery facts are.</summary>
+    public static readonly TimeSpan CostInterval = DeliveryInterval;
+
     private readonly NodeProber _prober;
     private readonly PinnedVersionsReader _versions;
     private readonly TimeProvider _time;
     private readonly List<(EnvironmentStatus Environment, DeployableStatus Deployable, TargetStatus Target)> _targets;
     private DateTimeOffset? _deliveryReadAt;
+    private DateTimeOffset? _costReadAt;
 
     /// <param name="events">
     /// Where the monitor writes what it observes; the page keeps one log across reloads of the topology. A log of its
@@ -78,6 +82,12 @@ public sealed class DashboardMonitor
     public DeliveryReport? Delivery { get; private set; }
 
     /// <summary>
+    /// What the system cost in Azure, as last read; null when the topology names no <c>costUrl</c> or the file was
+    /// never read. A reading that fails keeps the last good one: the file names the day its numbers are of.
+    /// </summary>
+    public CostReport? Cost { get; private set; }
+
+    /// <summary>
     /// The cluster the system runs in, read with every round of checks; null when the topology names none, and the
     /// page then has no cluster view.
     /// </summary>
@@ -90,8 +100,9 @@ public sealed class DashboardMonitor
     /// Checks every endpoint at the same time. Each result is recorded as it arrives, so a node that hangs until its
     /// timeout delays neither the others nor their display. The pinned versions are read at the same time, once per
     /// environment, and once per deployable that has a pin of its own (<c>pinUrl</c>): a file that cannot be read is a
-    /// result like any other and fails no check. So are the delivery facts, every <see cref="DeliveryInterval"/>, and
-    /// the two files of the cluster view, every round, where the topology names a cluster.
+    /// result like any other and fails no check. So are the delivery facts, every <see cref="DeliveryInterval"/>, the
+    /// cost, every <see cref="CostInterval"/>, and the two files of the cluster view, every round, where the topology
+    /// names a cluster.
     /// </summary>
     public async Task CheckAllAsync(ProbeKind probe, CancellationToken cancellationToken)
     {
@@ -104,6 +115,7 @@ public sealed class DashboardMonitor
             select ReadPinAsync(environment, deployable, cancellationToken);
         await Task.WhenAll(checks.Concat(readings).Concat(pins)
             .Append(ReadDeliveryAsync(cancellationToken))
+            .Append(ReadCostAsync(cancellationToken))
             .Append(Cluster?.CheckAsync(cancellationToken) ?? Task.CompletedTask));
         var now = _time.GetUtcNow();
         foreach (var environment in Environments)
@@ -190,6 +202,22 @@ public sealed class DashboardMonitor
         if (await _prober.ReadDeliveryAsync(address, cancellationToken) is { } report)
         {
             Delivery = report;
+            Changed?.Invoke();
+        }
+    }
+
+    private async Task ReadCostAsync(CancellationToken cancellationToken)
+    {
+        var now = _time.GetUtcNow();
+        if (Topology.System.CostUrl is not { } address || (_costReadAt is { } last && now - last < CostInterval))
+        {
+            return;
+        }
+
+        _costReadAt = now;
+        if (await _prober.ReadCostAsync(address, cancellationToken) is { } report)
+        {
+            Cost = report;
             Changed?.Invoke();
         }
     }

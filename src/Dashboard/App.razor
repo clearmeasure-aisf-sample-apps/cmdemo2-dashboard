@@ -43,6 +43,11 @@
                     }
                 </span>
             </p>
+            @* What the system cost in Azure, under every view: a day old, and there only with the cost file. *@
+            @if (_monitor?.Cost is { System: { } systemTotal } systemCost)
+            {
+                <CostLine Report="systemCost" Amounts="systemTotal" Label="Cost of the system" Now="Time.GetUtcNow()" />
+            }
         </div>
     </div>
 
@@ -116,6 +121,10 @@
                         <span class="chip">@tier</span>
                     }
                     <EnvironmentLinks Links="environment.Info.Links" Environment="@environment.Name" />
+                    @if (monitor.Cost is { } environmentCost && environmentCost.Find(environment.Name) is { } spent)
+                    {
+                        <CostLine Report="environmentCost" Amounts="spent.Amounts" Services="spent.TopServices" Now="Time.GetUtcNow()" />
+                    }
                 </header>
                 @if (environment.Deployables.Count == 0)
                 {
@@ -132,6 +141,8 @@
                 <EnvironmentDelivery Monitor="monitor" Environment="environment" IdPrefix="@environmentId" Zone="Zone" Now="Time.GetUtcNow()" />
             </section>
         }
+
+        <SharedCost Monitor="monitor" Now="Time.GetUtcNow()" />
     }
     else if (_errors is { } errors)
     {

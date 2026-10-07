@@ -310,6 +310,47 @@ public class RuntimePayloadBuilderTests
         Assert.Equal((RuntimePayloadBuilder.NoNumber, null), (payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Number, payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Text));
     }
 
+    [Fact]
+    public void ADashboardTheTopologyListsIsCheckedAndTheSiteOfThisPageStillSaysSo()
+    {
+        // Two homes of the dashboard, both nodes of the topology: one in the cluster, one outside it.
+        var manifest = new RuntimeManifest(
+            "uat",
+            [
+                new RuntimeNode("browser", RuntimeNodeKind.Person, "Browser"),
+                new RuntimeNode("swa_dashboard", RuntimeNodeKind.StaticSite, "uat/dashboard", new Uri("https://dashboard.uat.example.net"), "dashboard"),
+                new RuntimeNode("swa_status", RuntimeNodeKind.StaticSite, "swa-uat-status", new Uri("https://status.example.net"), "status"),
+            ],
+            [],
+            [
+                new RuntimeEdge("browser-to-swa_dashboard", "browser", "swa_dashboard", RuntimeEdgeKind.Dashboard),
+                new RuntimeEdge("browser-to-swa_status", "browser", "swa_status", RuntimeEdgeKind.Dashboard),
+            ]);
+        var uat = new EnvironmentStatus(TopologyParser.Parse("""
+            { "environments": [ { "name": "uat", "deployables": [
+                { "name": "dashboard", "frontDoor": null, "healthPath": "/", "alivePath": "/", "versionPath": "/version.json",
+                  "nodes": [ { "name": "uat/dashboard", "role": "primary", "url": "https://dashboard.uat.example.net" } ] },
+                { "name": "status", "frontDoor": null, "healthPath": "/", "alivePath": "/", "versionPath": "/version.json",
+                  "nodes": [ { "name": "swa-uat-status", "role": "primary", "url": "https://status.example.net" } ] } ] } ] }
+            """).Topology!.Environments[0]);
+        uat.Deployables[0].Nodes[0].Record(Answer(200, "1.0.7"));
+        uat.Deployables[1].Nodes[0].Record(NoAnswer);
+
+        // Seen from the site outside the cluster: the one in the cluster is checked, and answers.
+        var outside = RuntimePayloadBuilder.Build(manifest, uat, new Uri("https://status.example.net/"), TimeZoneInfo.Utc);
+        Assert.Equal(("healthy", "Healthy"), (Tile(outside, "swa_dashboard").State, Tile(outside, "swa_dashboard").Label));
+        Assert.Contains(Tile(outside, "swa_dashboard").Lines, line => line.Text.Contains("1.0.7", StringComparison.Ordinal));
+        Assert.Equal("active", Edge(outside, "browser-to-swa_dashboard"));
+        Assert.Equal("This page", Tile(outside, "swa_status").Label);
+
+        // Seen from the site in the cluster: it is this page, and the one outside does not answer.
+        var inside = RuntimePayloadBuilder.Build(manifest, uat, new Uri("https://dashboard.uat.example.net/"), TimeZoneInfo.Utc);
+        Assert.Equal("This page", Tile(inside, "swa_dashboard").Label);
+        Assert.Equal("unreachable", Tile(inside, "swa_status").State);
+        Assert.Equal("down", Edge(inside, "browser-to-swa_status"));
+        Assert.Contains("does not answer", inside.Edges.Single(edge => edge.Id == "browser-to-swa_status").Title, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// A cluster's environment: the app is one node at one public address, without a Front Door endpoint, and the
     /// database runs next to it. The diagram has the kinds the page already updates.

@@ -967,6 +967,46 @@ main {
   content: " \2197\FE0E";
 }
 
+/* ---------- Cost ---------- */
+
+/* What Azure billed, a day old: quiet text with the amounts in ink. It is no state, so it has no colour and no icon;
+   a dot separates the amounts, and the services that cost most take a line of their own. */
+.cost {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.45rem;
+  color: var(--ink-secondary);
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cost__label {
+  font-weight: 600;
+}
+
+.cost__part {
+  white-space: nowrap;
+}
+
+.cost__part strong {
+  color: var(--ink);
+}
+
+.cost__part + .cost__part::before {
+  content: "\00B7\00A0";
+}
+
+.cost__services {
+  flex-basis: 100%;
+  font-size: 0.82rem;
+}
+
+/* Under an environment's name: a row of its own in the heading. */
+.environment__header .cost {
+  flex-basis: 100%;
+}
+
 /* ---------- History strip ---------- */
 
 .history {
