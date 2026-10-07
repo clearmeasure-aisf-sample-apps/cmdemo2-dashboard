@@ -24,6 +24,9 @@ For each environment (tdd, uat, prod) and each deployable in it, the health view
 - per deployable, a "Code" card (the build its primary node runs: commit, lines of code by language, tests, coverage,
   complexity, CRAP, Qodana) and a "Delivery" card (deployed when, signed off by whom, lead time, how far behind the
   first environment), each only when its source answers;
+- under each environment's name, what it cost in Azure (the last complete day, seven days, the month so far, and the
+  services that cost most), after the environments the same for what they share, and in the header for the whole
+  system: a day old, and said so (see "Cost");
 - under every view, "What just happened": the last 50 events this page observed (state changes, restarts,
   deployments, failovers, pins, traffic, and for a system with a cluster what changed in it);
 - where the topology has a link for it, every number and name leads to its place in the Azure portal or in Octopus
@@ -76,7 +79,8 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 ```json
 {
   "system": { "slug": "cmdemo2", "name": "CM demo 2 multi-region", "repository": "https://github.com/example-org/cmdemo2-system",
-              "deliveryUrl": "https://raw.githubusercontent.com/example-org/cmdemo2-system/status/delivery.json" },
+              "deliveryUrl": "https://raw.githubusercontent.com/example-org/cmdemo2-system/status/delivery.json",
+              "costUrl": "https://raw.githubusercontent.com/example-org/cmdemo2-system/status/cost.json" },
   "generated": "2026-10-04T22:00:00Z",
   "environments": [
     {
@@ -110,6 +114,7 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 | `system.slug`, `system.name` | no | The name falls back to the slug, then to "System". |
 | `system.repository` | no, may be `null` | The footer names the system without a link to its repository. |
 | `system.deliveryUrl` | no, may be `null` | No "Delivery" cards and no last failover test: nothing is read (see "Delivery"). |
+| `system.costUrl` | no, may be `null` | No cost anywhere on the page: nothing is read (see "Cost"). |
 | `generated` | no | The footer does not show when the topology was generated. |
 | `environments` | yes, an array | Error. |
 | `environments[].name` | yes | Error. |
@@ -128,7 +133,7 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 | `deployables[].alivePath` | no | `/alive`. |
 | `deployables[].versionPath` | no | `/_version`. |
 | `deployables[].telemetryPath` | no, may be `null` | No calls per minute: the arrows show "–"; no process vitals and no trend lines. The nodes' own counts of the last minute (`/_telemetry`, see "Calls per minute"). |
-| `deployables[].trafficPaths` | no, may be `null` | The traffic button calls `/` only. |
+| `deployables[].trafficPaths` | no, may be `null` | The traffic button calls `/` only. An empty list says the deployable takes no generated traffic (a dashboard listed as a node). |
 | `deployables[].buildPath` | no, may be `null` | No "Code" card: nothing is read (see "Code"). |
 | `deployables[].links` | no | The Front Door tile's name is no link, and there is no "Requests in Logs" link. Keys: `frontDoor`, `logs`. |
 | `deployables[].nodes` | no | No node tiles. |
@@ -143,7 +148,7 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 | `cluster.serviceUrl` | no, may be `null` | No "AKS service" card: Azure's facts are not read, and an unreachable cluster is not compared with them. |
 | `cluster.links` | no | No link to the cluster in the Azure portal. Keys: `portal`, `workloads`. |
 
-An address that is present (`system.repository`, `system.deliveryUrl`, `versionsUrl`, `versionsHistoryUrl`,
+An address that is present (`system.repository`, `system.deliveryUrl`, `system.costUrl`, `versionsUrl`, `versionsHistoryUrl`,
 `projectUrl`, `pinUrl`, `pinHistoryUrl`, `frontDoor`, `nodes[].url`, `cluster.statusUrl`, `cluster.serviceUrl`) must be
 an absolute http(s) address: anything else is an error. A topology without `repository`, `versionsUrl`, `versionsHistoryUrl`, `projectUrl`, `pinUrl` and
 `pinHistoryUrl` is shown as before these fields existed: no line about versions, no request to GitHub. A `links`
@@ -159,6 +164,16 @@ dashboard shows "The topology could not be read" with every reason and its place
 
 The version endpoint (`versionPath`) answers JSON such as `{"version":"2.4.21+0a1b2c3"}`; the tile shows the part
 before `+`. A node that stops answering keeps the last version it reported.
+
+### A dashboard as a node
+
+A system can have this page in more than one home (in its cluster, and outside it on a static-site platform that
+answers while the cluster does not). The topology may then list each dashboard as a deployable with one node: its
+address, `healthPath` and `alivePath` `/`, `versionPath` `/version.json` (the Build writes that file next to
+`index.html`), and an empty `trafficPaths`, so the traffic button leaves it alone. Each dashboard then checks the
+others like any node, with their version and pin; in the runtime view the site that serves the page you are looking
+at says "This page", and every other one shows its state, with the arrow from the browser carrying it. The checked
+site must let other origins read `/` and `/version.json`.
 
 ## Pinned versions: what Git says next to what runs
 
@@ -271,8 +286,9 @@ diagram in place:
 A state is never colour alone: the badge has an icon and a word, the regions a word, the lines differ in dash and
 width. Hover a node or a line for its details.
 
-Under the diagram, for the environment it shows: the links to its resources in the Azure portal, and per deployable
-the "Code" and "Delivery" cards of the health view (see "Code" and "Delivery"); then the legend.
+Under the diagram, for the environment it shows: the links to its resources in the Azure portal, what it cost and
+what the resources it shares with the others cost (see "Cost"), and per deployable the "Code" and "Delivery" cards of
+the health view (see "Code" and "Delivery"); then the legend.
 
 A deployment from before the runtime view has no `runtime/`: the tab then says that the diagram is not available for
 this deployment, and the health view works as before.
@@ -653,8 +669,8 @@ global.json                  the SDK
 src/Dashboard                the Blazor WebAssembly app
   App.razor                  the page: header, view tabs, environments, footer, polling
   Components/                tile, history strip, trend line, state badge, deployable section, version line, code and
-                             delivery cards, events strip, links, runtime view, legend, cluster view (its cards,
-                             tables, meter and badge)
+                             delivery cards, cost line, events strip, links, runtime view, legend, cluster view (its
+                             cards, tables, meter and badge)
   Health/                    the health logic, plain C# without a browser
   Runtime/                   the runtime view's files, payload and address, plain C# without a browser
   Cluster/                   the cluster view's files, states, grouping and words, plain C# without a browser
@@ -670,7 +686,7 @@ The health logic is in `src/Dashboard/Health` and has no dependency on the brows
 reading the pinned versions (`PinnedVersions`, `PinnedVersionsReader`) and comparing them with the nodes
 (`VersionAssessment`, `VersionSummary`), a node's telemetry with its process (`TelemetrySnapshot`, `ProcessVitals`),
 the trends (`Trend`, `Trends`), the events (`EventDetector`, `EventLog`), the build facts (`BuildInfo`, `BuildText`),
-the delivery facts (`DeliveryReport`, `DeliveryText`) and the links (`LinkSet`, `LinkText`). The runtime view's logic is in `src/Dashboard/Runtime`: reading `runtime/`
+the delivery facts (`DeliveryReport`, `DeliveryText`), the cost (`CostReport`, `CostText`) and the links (`LinkSet`, `LinkText`). The runtime view's logic is in `src/Dashboard/Runtime`: reading `runtime/`
 (`RuntimeManifestParser`, `RuntimeLoader`), the update of the diagram (`RuntimePayloadBuilder`) and the view in the
 address (`ViewAddress`). The cluster view's logic is in `src/Dashboard/Cluster`: the two files (`ClusterStatus`,
 `AksService`) and their reading (`ClusterReader`, `ClusterMonitor`), the states (`PodRules`, `ClusterAssessment`), the
@@ -850,3 +866,53 @@ own after the environment's deployables: first the one named `system`, the syste
 system (infrastructure and pipeline)", then the others (such as the dashboard). The last failover test of the system
 (`failover`: environment, when, the seconds until the standby answered) is a line above the events.
 
+## Cost
+
+With `system.costUrl`, the page reads what the system cost in Azure: with the first round of checks and then every
+five minutes, as it reads the delivery facts. The deployment writes the address
+`https://raw.githubusercontent.com/<githubOrg>/<repository>/status/cost.json`; the workflow that publishes the
+delivery facts publishes this file next to them, hourly, from Azure Cost Management (`scripts/write-cost.ps1` of the
+system repository). Until it has, the address answers 404 and no cost is shown. A reading that fails later keeps the
+last good one.
+
+```json
+{ "generated": "2026-10-07T05:00:00Z", "currency": "USD", "asOf": "2026-10-06",
+  "system": { "yesterday": 3.41, "last7Days": 22.10, "monthToDate": 24.80 },
+  "environments": [
+    { "name": "prod", "yesterday": 1.52, "last7Days": 9.80, "monthToDate": 11.02,
+      "topServices": [ { "name": "Azure App Service", "monthToDate": 6.10 } ] },
+    { "name": "shared", "yesterday": 1.10, "last7Days": 7.70, "monthToDate": 8.20, "topServices": [ ] } ] }
+```
+
+| Field | What it is |
+|---|---|
+| `asOf` | The last complete UTC day the numbers include. Every number is a sum of complete UTC days: `yesterday` is that day, `last7Days` the seven days that end with it, `monthToDate` the first of its month up to it. |
+| `currency` | The currency Azure bills in. `USD` is shown as `$1.52`, any other by its code (`1.52 EUR`). |
+| `system` | The whole system: everything in its resource groups. |
+| `environments[]` | One entry per environment, by the tag `environment` of the resources, and `shared`: what carries no such tag (the Front Door profile, the registry, the Terraform state) and what Azure bills without tags. |
+| `topServices` | Up to three services (as Cost Management names them) that cost most in `monthToDate`, the most expensive first. |
+| `generated` | When the file's content last changed, not the time of a check. |
+
+Where it is shown:
+
+| Where | What |
+|---|---|
+| The header, under every view | "Cost of the system": the three numbers of `system`. |
+| Health, under an environment's name | "Cost": the three numbers of the environment's entry, and under them the services that cost most ("Most this month: Azure App Service $6.10, SQL Database $2.00"). An environment without an entry has no line. |
+| Health, after the environments | A heading per entry that is no environment of the topology: first those Azure still bills under another name (a removed environment, marked "not in the topology"), then `shared` ("no environment"), each with its line and a sentence that says what it holds. |
+| Runtime, under the diagram | "Cost of <environment>" and "Cost of what the environments share". |
+
+A line reads "Cost $1.52 yesterday · $9.80 in 7 days · $11.02 this month · as of 2026-10-06". The numbers are never
+presented as live:
+
+- every line ends with the day its numbers are of ("as of"), and its tooltip says that Azure's cost arrives hours late
+  and is amended for a day or two;
+- "yesterday" is said only while `asOf` is the UTC day before now: a file that was not renewed reads "on 2026-10-06"
+  instead. "This month" is said only while now is in the month of `asOf`: on the first of a month, and for an old
+  file, it reads "in September";
+- a number that is `null` in the file (Azure throttled or refused that reading) is a dash;
+- cost has no state: no colour, no icon, no event, and it does not change the summary.
+
+Attribution is by tag, so it is as good as the tags: a resource that several environments use is counted for the one
+whose tag it carries (the App Service plan a tier's environments share carries the tag of the tier's first
+environment), and a resource created without the tag counts as shared.

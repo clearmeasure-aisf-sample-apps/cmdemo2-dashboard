@@ -68,15 +68,17 @@ public static class TopologyParser
         string? name = null;
         Uri? repository = null;
         Uri? delivery = null;
+        Uri? cost = null;
         if (root.TryGetProperty("system", out var system) && system.ValueKind == JsonValueKind.Object)
         {
             slug = ReadText(system, "slug") ?? string.Empty;
             name = ReadText(system, "name");
             repository = ReadOptionalAddress(system, "repository", "system", errors);
             delivery = ReadOptionalAddress(system, "deliveryUrl", "system", errors);
+            cost = ReadOptionalAddress(system, "costUrl", "system", errors);
         }
 
-        return new SystemInfo(slug, name ?? (slug.Length > 0 ? slug : "System"), repository, delivery);
+        return new SystemInfo(slug, name ?? (slug.Length > 0 ? slug : "System"), repository, delivery, cost);
     }
 
     private static List<EnvironmentInfo> ReadEnvironments(JsonElement root, List<string> errors)

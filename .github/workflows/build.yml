@@ -45,6 +45,12 @@ jobs:
       - name: Publish
         run: dotnet publish src/Dashboard -c Release --no-restore -warnaserror "-p:Version=${VERSION}" -o publish
 
+      # The site says which version it is where a browser can ask (as an app does at /_version): another dashboard
+      # of the system checks this one, and compares the version with the pinned one.
+      - name: Write version.json
+        run: |
+          printf '{ "version": "%s" }\n' "${VERSION}" > publish/wwwroot/version.json
+
       - name: Upload the site
         uses: actions/upload-artifact@v7
         with:

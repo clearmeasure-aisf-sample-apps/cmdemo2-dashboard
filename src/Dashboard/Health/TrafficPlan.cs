@@ -27,7 +27,9 @@ public sealed record TrafficPlan(string Environment, IReadOnlyList<Uri> Addresse
             var publicAddress = deployable.FrontDoor
                 ?? deployable.Nodes.FirstOrDefault(node => node.IsPrimary)?.Url
                 ?? (deployable.Nodes.Count > 0 ? deployable.Nodes[0].Url : null);
-            if (publicAddress is null)
+            // An empty list of traffic paths is said on purpose: a deployable that takes no generated traffic (a
+            // dashboard the topology lists as a node). Without the key, the start page is called.
+            if (publicAddress is null || deployable.TrafficPaths is { Count: 0 })
             {
                 continue;
             }

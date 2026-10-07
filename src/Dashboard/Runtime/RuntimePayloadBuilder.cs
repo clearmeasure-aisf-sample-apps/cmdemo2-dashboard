@@ -91,6 +91,8 @@ public static class RuntimePayloadBuilder
         var kind = node.Kind switch
         {
             RuntimeNodeKind.WebApp => TargetKind.Node,
+            // A dashboard the topology lists as a node (another home of this page) is checked like a web app.
+            RuntimeNodeKind.StaticSite => TargetKind.Node,
             RuntimeNodeKind.FrontDoor => TargetKind.FrontDoor,
             _ => (TargetKind?)null,
         };
@@ -101,6 +103,17 @@ public static class RuntimePayloadBuilder
 
     private static RuntimeTile Tile(RuntimeNode node, Entry? entry, EnvironmentStatus? environment, Uri? page, TimeZoneInfo zone)
     {
+        // The site that serves this page says so, also where the topology lists it as a node: it answers, or nobody
+        // would be reading this.
+        if (node.Kind == RuntimeNodeKind.StaticSite && node.Url is not null && page is not null && SameSite(node.Url, page))
+        {
+            return NeutralTile(
+                node,
+                "This page",
+                "serves this dashboard",
+                $"{node.Name} ({node.Url.Host}) serves the page you are looking at.");
+        }
+
         if (entry is not null)
         {
             return node.Kind == RuntimeNodeKind.FrontDoor ? FrontDoorTile(node, entry, zone) : WebAppTile(node, entry, environment!, zone);
@@ -108,11 +121,6 @@ public static class RuntimePayloadBuilder
 
         return node.Kind switch
         {
-            RuntimeNodeKind.StaticSite when node.Url is not null && page is not null && SameSite(node.Url, page) => NeutralTile(
-                node,
-                "This page",
-                "serves this dashboard",
-                $"{node.Name} ({node.Url.Host}) serves the page you are looking at."),
             RuntimeNodeKind.StaticSite => NeutralTile(
                 node,
                 "Not probed",
@@ -541,6 +549,24 @@ public static class RuntimePayloadBuilder
                     ? null
                     : RuntimeLink.To(target.Deployable.Info.Links?[LinkSet.Logs], LinkText.For(LinkSet.Logs, target.Deployable.Info.Name));
                 return new RuntimeEdgeMark(edge.Id, state, number, CallsUnit, null, $"The browser to {edge.To}: {Words(state)} {counted}", requests, RuntimeTrend.Of(trend));
+            }
+
+            case RuntimeEdgeKind.Dashboard when to is not null:
+            {
+                // A dashboard the topology lists as a node (another home of this page): the arrow says whether it answers.
+                var state = to.Target.State switch
+                {
+                    HealthState.Healthy => "active",
+                    HealthState.Pending => Checking,
+                    _ => "down",
+                };
+                var words = state switch
+                {
+                    "active" => "It answers.",
+                    Checking => "Being checked.",
+                    _ => "Down: it does not answer.",
+                };
+                return new RuntimeEdgeMark(edge.Id, state, null, null, null, $"The browser to {to.Target.Name}: {words}");
             }
 
             default:
