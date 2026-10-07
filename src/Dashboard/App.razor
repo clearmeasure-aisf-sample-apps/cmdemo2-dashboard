@@ -123,7 +123,7 @@
                     <EnvironmentLinks Links="environment.Info.Links" Environment="@environment.Name" />
                     @if (monitor.Cost is { } environmentCost && environmentCost.Find(environment.Name) is { } spent)
                     {
-                        <CostLine Report="environmentCost" Amounts="spent.Amounts" Services="spent.TopServices" Now="Time.GetUtcNow()" />
+                        <CostLine Report="environmentCost" Amounts="spent.Amounts" Services="spent.TopServices" Estimate="spent.Estimate" Now="Time.GetUtcNow()" />
                     }
                 </header>
                 @if (environment.Deployables.Count == 0)

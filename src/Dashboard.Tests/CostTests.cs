@@ -28,6 +28,35 @@ public class CostTests
     }
 
     [Fact]
+    public void AnEnvironmentOfOneClusterHasAnEstimateOfItsPartOfWhatIsShared()
+    {
+        var report = CostReport.Parse("""
+            { "currency": "USD", "asOf": "2026-10-03",
+              "system": { "yesterday": 5.85, "last7Days": 13.44, "monthToDate": 13.44 },
+              "environments": [
+                { "name": "tdd", "yesterday": 0, "last7Days": 0, "monthToDate": 0,
+                  "estimate": { "share": 0.2048, "yesterday": 1.17, "last7Days": 2.69, "monthToDate": 2.69 } },
+                { "name": "uat", "monthToDate": 0.4, "estimate": { "monthToDate": 1.5 } },
+                { "name": "prod", "monthToDate": 0.4, "estimate": { "share": 7, "yesterday": 1 } },
+                { "name": "old", "monthToDate": 0.4, "estimate": { "share": 0.2 } },
+                { "name": "shared", "yesterday": 5.85, "last7Days": 13.44, "monthToDate": 13.44 } ] }
+            """)!;
+
+        var tdd = report.Find("tdd")!;
+        Assert.Equal(new CostEstimate(0.2048, new CostAmounts(1.17, 2.69, 2.69)), tdd.Estimate);
+        Assert.Equal("plus about $2.69 this month of what the environments share (20 % of what all pods request)", CostText.Estimate(tdd.Estimate, report, Now));
+        // Without a share the amount stands alone; a share that is none is left out; no month, no words; no amount, no estimate.
+        Assert.Equal("plus about $1.50 this month of what the environments share", CostText.Estimate(report.Find("uat")!.Estimate, report, Now));
+        Assert.Equal(new CostEstimate(null, new CostAmounts(1, null, null)), report.Find("prod")!.Estimate);
+        Assert.Null(CostText.Estimate(report.Find("prod")!.Estimate, report, Now));
+        Assert.Null(report.Find("old")!.Estimate);
+        Assert.Null(report.Shared!.Estimate);
+        Assert.Null(CostText.Estimate(null, report, Now));
+        // The whole is still in the shared entry: an estimate takes nothing from it.
+        Assert.Equal(new CostAmounts(5.85, 13.44, 13.44), report.Shared.Amounts);
+    }
+
+    [Fact]
     public void WhatNoEnvironmentOwnsIsTheSharedEntryAndWhatTheTopologyDoesNotKnowAreTheOthers()
     {
         Assert.Equal(new CostAmounts(1.1, 7.7, 8.2), Report.Shared!.Amounts);

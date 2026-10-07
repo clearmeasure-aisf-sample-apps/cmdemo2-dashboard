@@ -90,7 +90,11 @@ public sealed record CostAmounts(double? Yesterday, double? Last7Days, double? M
 
 /// <summary>The cost of one environment, or of what the environments share.</summary>
 /// <param name="TopServices">The services that cost most this month, the most expensive first.</param>
-public sealed record CostEntry(string Name, CostAmounts Amounts, IReadOnlyList<CostService> TopServices)
+/// <param name="Estimate">
+/// The environment's estimated part of what the environments share (a cluster that runs them all); null when the file
+/// gives none. It is not added to <paramref name="Amounts"/>: the shared entry still holds the whole.
+/// </param>
+public sealed record CostEntry(string Name, CostAmounts Amounts, IReadOnlyList<CostService> TopServices, CostEstimate? Estimate = null)
 {
     internal static CostEntry? Read(JsonElement element) =>
         JsonRead.Text(element, "name") is { } name
@@ -100,8 +104,24 @@ public sealed record CostEntry(string Name, CostAmounts Amounts, IReadOnlyList<C
                 [.. JsonRead.Items(element, "topServices")
                     .Select(service => (Name: JsonRead.Text(service, "name"), Amount: CostAmounts.Amount(service, "monthToDate")))
                     .Where(service => service.Name is not null)
-                    .Select(service => new CostService(service.Name!, service.Amount))])
+                    .Select(service => new CostService(service.Name!, service.Amount))],
+                JsonRead.Section(element, "estimate") is { } estimate ? CostEstimate.Read(estimate) : null)
             : null;
+}
+
+/// <summary>
+/// An environment's part of a cost the environments share, estimated by the file's publisher: the shared cost times
+/// the share of CPU and memory the environment's pods request of what all pods request.
+/// </summary>
+/// <param name="Share">The share, 0 to 1; null when the file does not say.</param>
+public sealed record CostEstimate(double? Share, CostAmounts Amounts)
+{
+    internal static CostEstimate? Read(JsonElement element)
+    {
+        var amounts = CostAmounts.Read(element);
+        var share = CostAmounts.Amount(element, "share") is { } value and >= 0 and <= 1 ? value : (double?)null;
+        return amounts is { Yesterday: null, Last7Days: null, MonthToDate: null } ? null : new CostEstimate(share, amounts);
+    }
 }
 
 /// <summary>An Azure service (as Cost Management names it) and what it cost in the month so far.</summary>
@@ -195,6 +215,29 @@ public static class CostText
             ? $"Most {Month(report.AsOf, now)}: {string.Join(", ", services.Select(service => $"{service.Name} {Money(service.MonthToDate, report.Currency)}"))}"
             : null;
     }
+
+    /// <summary>
+    /// <c>plus about $2.69 this month of what the environments share (20 % of what all pods request)</c>; null when
+    /// the estimate has no amount for the month.
+    /// </summary>
+    public static string? Estimate(CostEstimate? estimate, CostReport report, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+        if (estimate?.Amounts.MonthToDate is not { } amount)
+        {
+            return null;
+        }
+
+        var share = estimate.Share is { } part
+            ? string.Create(CultureInfo.InvariantCulture, $" ({Math.Round(part * 100, MidpointRounding.AwayFromZero):0} % of what all pods request)")
+            : string.Empty;
+        return $"plus about {Money(amount, report.Currency)} {Month(report.AsOf, now)} of what the environments share{share}";
+    }
+
+    /// <summary>What an estimate is, for its tooltip.</summary>
+    public const string EstimateHelp =
+        "An estimate, not a bill: the cost of the cluster that no environment's tag claims, times the share of CPU and memory "
+        + "this environment's pods request of what all running pods request now. It stays part of what the environments share.";
 
     /// <summary>What the numbers are and how old, for the tooltip of every cost line.</summary>
     public static string Help(CostReport report)

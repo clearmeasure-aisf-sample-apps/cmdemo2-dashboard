@@ -125,7 +125,7 @@
                 {
                     if (cost.Find(facts.Name) is { } spent)
                     {
-                        <CostLine Report="cost" Amounts="spent.Amounts" Services="spent.TopServices" Label="@($"Cost of {facts.Name}")" Now="Now" />
+                        <CostLine Report="cost" Amounts="spent.Amounts" Services="spent.TopServices" Estimate="spent.Estimate" Label="@($"Cost of {facts.Name}")" Now="Now" />
                     }
 
                     if (cost.Shared is { } shared)

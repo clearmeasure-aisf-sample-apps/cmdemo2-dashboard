@@ -891,6 +891,7 @@ last good one.
 | `system` | The whole system: everything in its resource groups. |
 | `environments[]` | One entry per environment, by the tag `environment` of the resources, and `shared`: what carries no such tag (the Front Door profile, the registry, the Terraform state) and what Azure bills without tags. |
 | `topServices` | Up to three services (as Cost Management names them) that cost most in `monthToDate`, the most expensive first. |
+| `environments[].estimate` | Optional, for a system whose environments share one cluster: `{ "share": 0.2, "yesterday": …, "last7Days": …, "monthToDate": … }`, the environment's estimated part of the shared cost (the cluster's cost that no tag claims, times the share of CPU and memory the environment's pods request of what all pods request). The line of the environment then ends "plus about $2.69 this month of what the environments share (20 % of what all pods request)". An estimate, not a bill: it stays part of `shared`. |
 | `generated` | When the file's content last changed, not the time of a check. |
 
 Where it is shown:
