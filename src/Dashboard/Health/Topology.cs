@@ -75,6 +75,10 @@ public sealed record ClusterInfo(string? Name, Uri? StatusUrl = null, Uri? Servi
 /// in Git. Null when the environment's <c>versions.json</c> holds the pin.
 /// </param>
 /// <param name="PinHistoryUrl">The page with the history of that file; null for the history of <c>versions.json</c>.</param>
+/// <param name="HealthDetailPath">
+/// Where a node answers its detailed health check (<c>/_healthcheck/detailed</c>, see <see cref="HealthDetail"/>): one
+/// entry per dependency it checks; null when the app has no such endpoint.
+/// </param>
 public sealed record DeployableInfo(
     string Name,
     Uri? FrontDoor,
@@ -88,7 +92,8 @@ public sealed record DeployableInfo(
     string? BuildPath = null,
     LinkSet? Links = null,
     Uri? PinUrl = null,
-    Uri? PinHistoryUrl = null)
+    Uri? PinHistoryUrl = null,
+    string? HealthDetailPath = null)
 {
     public const string DefaultHealthPath = "/_healthcheck";
     public const string DefaultAlivePath = "/alive";

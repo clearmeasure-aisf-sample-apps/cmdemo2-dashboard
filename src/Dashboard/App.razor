@@ -125,6 +125,11 @@
                     {
                         <CostLine Report="environmentCost" Amounts="spent.Amounts" Services="spent.TopServices" Estimate="spent.Estimate" Now="Time.GetUtcNow()" />
                     }
+                    @* What the pipeline's hourly health reports found: there only when the delivery facts have it. *@
+                    @if (monitor.Delivery is { } delivered && delivered.HealthOf(environment.Name) is { } reports)
+                    {
+                        <AvailabilityLine Reports="reports" Changed="delivered.Generated" Zone="Zone" Now="Time.GetUtcNow()" />
+                    }
                 </header>
                 @if (environment.Deployables.Count == 0)
                 {

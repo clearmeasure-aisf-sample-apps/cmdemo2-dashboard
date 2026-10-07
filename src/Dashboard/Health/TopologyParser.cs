@@ -195,7 +195,8 @@ public static class TopologyParser
                 ReadText(element, "buildPath") is { Length: > 0 } build ? AsPath(build) : null,
                 ReadLinks(element),
                 pin,
-                pinHistory));
+                pinHistory,
+                ReadText(element, "healthDetailPath") is { Length: > 0 } detail ? AsPath(detail) : null));
         }
 
         return deployables;

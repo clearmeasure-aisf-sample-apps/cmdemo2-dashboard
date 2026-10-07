@@ -43,6 +43,15 @@ public sealed class TargetStatus(TargetKind kind, string name, Uri url, string? 
     public TelemetrySnapshot? Telemetry { get; private set; }
 
     /// <summary>
+    /// The entries of the node's detailed health check at the last check; null when it was not read (the deployable
+    /// has no <c>healthDetailPath</c>, the probe is Liveness) or gave no entries. Never the answer of an earlier check.
+    /// </summary>
+    public HealthDetail? HealthDetail { get; private set; }
+
+    /// <summary>Records the detailed health check of one check; null replaces what an earlier check read.</summary>
+    public void RecordHealthDetail(HealthDetail? detail) => HealthDetail = detail;
+
+    /// <summary>
     /// The last <see cref="Trend.Length"/> readings of the node's telemetry, oldest first, for the sparklines: one per
     /// check, null where the node reported none.
     /// </summary>

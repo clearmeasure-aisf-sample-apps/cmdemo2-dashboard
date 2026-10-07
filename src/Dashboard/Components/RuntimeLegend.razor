@@ -51,8 +51,8 @@
 @code {
     private static readonly (string State, string Text)[] Nodes =
     [
-        ("healthy", "Healthy: HTTP 200 (the database: a health check through it passes)"),
-        ("unhealthy", "Unhealthy: answers, not HTTP 200"),
+        ("healthy", "Healthy: HTTP 200 (the database, a dependency: a web app's health check says it is reachable)"),
+        ("unhealthy", "Unhealthy: answers, not HTTP 200 (a dependency: a web app's health check says it is degraded or unhealthy)"),
         ("unreachable", "Unreachable: no answer"),
         ("checking", "Checking"),
         ("neutral", "Not probed from the browser"),

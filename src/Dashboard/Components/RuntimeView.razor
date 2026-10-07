@@ -18,7 +18,7 @@
                 }
             </div>
             <button type="button" class="button button--quiet runtime__fit" aria-pressed="@(_fit ? "true" : "false")"
-                    title="Fit the diagram to the width of the page (down to three quarters of its size), or show it at its actual size; it scrolls sideways when it does not fit"
+                    title="Fit the diagram to the width of the page (down to 70 % of its size), or show it at its actual size; it scrolls sideways when it does not fit"
                     @onclick="() => _fit = !_fit">Fit to width</button>
         }
     </header>
@@ -76,6 +76,21 @@
                 </text>
             }
             "Generate traffic" at the bottom of the page makes them move.
+            @* Said only where the system has them: the marks of a detailed health check, a dependency outside Azure. *@
+            @if (Monitor.Topology.Environments.Any(environment => environment.Deployables.Any(deployable => deployable.HealthDetailPath is not null)))
+            {
+                <text>
+                    The row of small marks on a web app is its health check entry by entry (with the probe Health check): a
+                    check, a warning triangle or a cross for each thing it checks; hover a mark for its name and its words.
+                </text>
+            }
+            @if (_diagram is { IsValid: true, Manifest: { } drawn } && drawn.Nodes.Any(node => node.Kind == RuntimeNodeKind.Dependency))
+            {
+                <text>
+                    A box outside the subscription is something a web app depends on and the system does not own: the browser
+                    does not call it, and its state is what the web apps' health checks say about it.
+                </text>
+            }
             The small line next to a number is its trend over the last checks of this page. An underlined number or name
             is a link: it opens the Azure portal or Octopus Deploy in a new tab, which ask you to sign in.
         </p>
@@ -115,12 +130,17 @@
         }
 
         @* Under the diagram: what is known about the shown environment beyond its health (its resources in the Azure
-           portal, what it and the resources it shares cost, the code its deployables run, how they were delivered).
+           portal, what the pipeline's hourly health reports found, what it and the resources it shares cost, the code
+           its deployables run, how they were delivered).
            Nothing where no source answered. *@
         @if (Shown is { } facts)
         {
-            <section class="runtime__facts" aria-label="@($"Cost, code and delivery of {facts.Name}")">
+            <section class="runtime__facts" aria-label="@($"Availability, cost, code and delivery of {facts.Name}")">
                 <EnvironmentLinks Links="facts.Info.Links" Environment="@facts.Name" />
+                @if (Monitor.Delivery is { } delivered && delivered.HealthOf(facts.Name) is { } reports)
+                {
+                    <AvailabilityLine Reports="reports" Label="@($"Availability of {facts.Name}")" Changed="delivered.Generated" Zone="Zone" Now="Now" />
+                }
                 @if (Monitor.Cost is { } cost)
                 {
                     if (cost.Find(facts.Name) is { } spent)

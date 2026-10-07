@@ -20,13 +20,17 @@ For each environment (tdd, uat, prod) and each deployable in it, the health view
   region and role (primary or standby);
 - per tile: the state, the HTTP status, the latency, the app version, the time of the last check and a strip with the
   last 30 checks; for a web app that reports them, its calls of the last minute and its process's vitals (CPU, memory,
-  requests in flight, exceptions, uptime), with a small trend line next to the requests and the CPU;
+  requests in flight, exceptions, uptime), with a small trend line next to the requests and the CPU; and for a web
+  app that answers a detailed health check, one mark per thing it checks (its database, a gateway it calls), so an
+  unhealthy tile says which of them failed (see "Health checks, entry by entry");
 - per deployable, a "Code" card (the build its primary node runs: commit, lines of code by language, tests, coverage,
   complexity, CRAP, Qodana) and a "Delivery" card (deployed when, signed off by whom, lead time, how far behind the
   first environment), each only when its source answers;
 - under each environment's name, what it cost in Azure (the last complete day, seven days, the month so far, and the
   services that cost most), after the environments the same for what they share, and in the header for the whole
   system: a day old, and said so (see "Cost");
+- under each environment's name, in how many of the pipeline's hourly health reports it was healthy, in 24 hours and
+  in seven days, and when one last failed: hourly checks, not continuous monitoring, and said so (see "Availability");
 - under every view, "What just happened": the last 50 events this page observed (state changes, restarts,
   deployments, failovers, pins, traffic, and for a system with a cluster what changed in it);
 - where the topology has a link for it, every number and name leads to its place in the Azure portal or in Octopus
@@ -40,9 +44,9 @@ For each environment (tdd, uat, prod) and each deployable in it, the health view
   refresh, pause and resume, the interval (10 s, 30 s, 60 s) and the probe (health check or liveness), and a second
   line only while versions differ somewhere ("Versions differ in 1 environment").
 
-The browser holds no secret: it reads public addresses only (the nodes' health, version, telemetry and build
-endpoints and public files on GitHub), and the links to the Azure portal, Octopus Deploy and GitHub are plain links
-that ask the viewer to sign in there.
+The browser holds no secret: it reads public addresses only (the nodes' health, detailed health, version, telemetry
+and build endpoints and public files on GitHub), and the links to the Azure portal, Octopus Deploy and GitHub are
+plain links that ask the viewer to sign in there.
 
 Everything beyond the health checks is optional. A source that is absent or cannot be read (an older app without the
 endpoint, a file that is not published yet, a topology without the field) is never an error: its element is not
@@ -96,6 +100,7 @@ topology" is pressed. The deployment writes the real file; the build does not kn
           "frontDoor": "https://cmdemo2-uat-def456.z01.azurefd.net",
           "healthPath": "/_healthcheck", "alivePath": "/alive", "versionPath": "/_version",
           "telemetryPath": "/_telemetry", "trafficPaths": [ "/" ], "buildPath": "/_build",
+          "healthDetailPath": "/_healthcheck/detailed",
           "links": { "frontDoor": "...", "logs": "..." },
           "nodes": [
             { "name": "app-cmdemo2-uat-ui", "region": "westus3", "role": "primary", "url": "https://app-cmdemo2-uat-ui.azurewebsites.net",
@@ -135,6 +140,7 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 | `deployables[].telemetryPath` | no, may be `null` | No calls per minute: the arrows show "–"; no process vitals and no trend lines. The nodes' own counts of the last minute (`/_telemetry`, see "Calls per minute"). |
 | `deployables[].trafficPaths` | no, may be `null` | The traffic button calls `/` only. An empty list says the deployable takes no generated traffic (a dashboard listed as a node). |
 | `deployables[].buildPath` | no, may be `null` | No "Code" card: nothing is read (see "Code"). |
+| `deployables[].healthDetailPath` | no, may be `null` | No marks of the health check's entries on the tiles, and a dependency in the runtime diagram is "Not known": nothing is read (see "Health checks, entry by entry"). |
 | `deployables[].links` | no | The Front Door tile's name is no link, and there is no "Requests in Logs" link. Keys: `frontDoor`, `logs`. |
 | `deployables[].nodes` | no | No node tiles. |
 | `nodes[].url` | yes, an absolute http(s) address | Error. |
@@ -261,8 +267,14 @@ The runtime view shows one environment as a C4 deployment diagram: the Azure sub
 tier's, and the Front Door's), the regions (primary, standby, and the region of the database and of the static
 sites), the App Service plans with their size, the web apps, the Front Door endpoint, the Azure SQL database, the
 dashboard's Static Web App and the browser, with the relationships between them. One button per environment selects
-the diagram; "Fit to width" fits it to the page (down to three quarters of its size; below that, and at its actual
-size, it scrolls sideways inside its own frame). The diagram is a light sheet in the dark theme too.
+the diagram; "Fit to width" fits it to the page (down to 70 % of its size, where the tiles' words are 8 px high;
+below that, and at its actual size, it scrolls sideways inside its own frame). The diagram is a light sheet in the
+dark theme too. A system whose deployable declares what it depends on also has, outside the subscription, one box
+per dependency, with an arrow from each of the deployable's web apps.
+
+The widths of the diagram are set by the deployment (the slots below, and the names of the resources): an
+environment with a standby region is the browser, three columns of boxes and three columns of number lines wide,
+about 1740 px for cmdemo2. It fits the page without scrolling sideways in a window from about 1270 px on.
 
 **Drawn when the dashboard was deployed** (static): the resources, their names, sizes, regions and relationships. The
 deployment renders the diagram with PlantUML from `system.json` and the topology, so a change to the environments, a
@@ -274,20 +286,23 @@ diagram in place:
 
 | Element | What it shows |
 |---|---|
-| Web app, Front Door endpoint | The box's colour and border by state (Healthy, Unhealthy, Unreachable, Checking), and a tile: the state's badge with its word, HTTP status and latency, the version, the last 30 checks. A web app also shows its version next to the pinned one ("pinned 2.4.21: in sync", "differs from pinned 2.4.21"), its own numbers where it reports them ("12 req/min · p95 85 ms" with the trend of the requests, "0 errors · 0 exceptions/min", "CPU 3.2 % · 412 MB · 2 in flight" with the trend of the CPU, "up 2 h" or "restarted 3 min ago") and its role ("primary: serves traffic", "standby: ready, no traffic"; the only node of a deployable without a Front Door endpoint has no role: "serves traffic", "not serving"); the endpoint shows where it routes ("routes to eastus2 (failed over)") and whether it agrees with the web apps. |
+| Web app, Front Door endpoint | The box's colour and border by state (Healthy, Unhealthy, Unreachable, Checking), and a tile: the state's badge with its word, HTTP status and latency, the version, the last 30 checks. A web app also shows its version next to the pinned one ("pinned 2.4.21: in sync", "differs from pinned 2.4.21"), its own numbers where it reports them ("12 req/min · p95 85 ms" with the trend of the requests, "0 errors · 0 exceptions/min", "CPU 3.2 % · 412 MB · 2 in flight" with the trend of the CPU, "up 2 h" or "restarted 3 min ago") and its role ("primary: serves traffic", "standby: ready, no traffic"; the only node of a deployable without a Front Door endpoint has no role: "serves traffic", "not serving"), and last, where it answers a detailed health check, one small mark per entry with the summary in words ("8 checks healthy", "LlmGateway degraded", "2 of 8 checks not healthy"; see "Health checks, entry by entry"); the endpoint shows where it routes ("routes to eastus2 (failed over)") and whether it agrees with the web apps. |
 | Region of web apps | A mark with words: "serving traffic" (green frame), "standby: ready", "not serving" (red frame), by the same serving decision as the health view's banner. |
 | Front Door to an origin | Solid and green while it carries the traffic, dotted grey while idle, dashed red when the origin is not healthy: a failover is the green line moving from priority 1 to priority 2. |
 | Web app to the database | Green from the web app that serves, dotted from the others. |
-| Number line of a relationship | Calls per minute of the last minute, in a solid frame, as the web apps count them: browser to Front Door (the sum of its origins' requests from Front Door), Front Door to an origin (its requests from Front Door; Front Door's health probes next to the role), web app to database (the SQL commands of its requests, with the background ones next to the role, "queries of the app · 55 background"; all SQL commands for an app that does not tell them apart). Next to the number, its trend over the last checks of this page. A dashed frame with "–" where no web app reports a number (no `telemetryPath`, or an app without the endpoint). |
+| Number line of a relationship | Calls per minute of the last minute, in a solid frame, as the web apps count them: browser to Front Door (the sum of its origins' requests from Front Door), Front Door to an origin (its requests from Front Door; Front Door's health probes next to the role), web app to database (the SQL commands of its requests, with the background ones next to the role, "app queries · 55 background"; all SQL commands for an app that does not tell them apart), web app to dependency (the web app's outgoing HTTP calls, `http.perMinute`, when the web app has exactly one dependency; a dash, "not counted apart", when it has more, because the app counts them as one number). Next to the number, its trend over the last checks of this page. A dashed frame with "–" where no web app reports a number (no `telemetryPath`, or an app without the endpoint). |
 | Database | The browser cannot ask the database, but a web app's health check connects to it: "Reachable" (healthy) when the health check of a web app that uses it passes, with the queries per minute its web apps' traffic causes (the background ones are in the tooltip); "Not confirmed" (neutral) when none passes, since the web app may be the cause; "Not probed" (neutral) with the Liveness probe, which leaves the database alone. |
+| Dependency (a box outside the subscription) | The browser does not call it; the entry of the web apps' detailed health check that the system names for it says its state. "Reachable" (healthy) when that entry is Healthy on a web app that passes its health check, with the entry's own words as the line ("Chat client is not configured"), or "westus3 reports it degraded" when another web app says otherwise; "Degraded" or "Unhealthy" (drawn as unhealthy) with the entry's words when no web app reaches it; and neutral with the reason otherwise: "Not known" (no web app answers the detailed health check, or it has no entry of that name), "Not confirmed" (the entry is healthy only on a web app that fails its own health check), "Not probed" (the system names no entry for it, or the probe is Liveness, which reads no entries). |
+| Web app to a dependency | Green from the web app that serves, dotted from the others, like the line to the database. |
 | Links | Where the topology has a link (see "Links"): a web app's badge (Live Metrics), its name (the web app in the portal), its version (the release in Octopus Deploy, or else the commit of its build), its requests (Performance) and its errors (Failures); the Front Door endpoint's and the database's name; the numbers on the arrows (Performance, the dependency calls, the requests in Logs). They are real `a` elements: underlined, in the order of the keyboard, each with a title that says where it goes. |
 | Static site | Neutral, "Not probed": the dashboard does not check itself. The static site that serves the page says "This page". |
 
 A state is never colour alone: the badge has an icon and a word, the regions a word, the lines differ in dash and
 width. Hover a node or a line for its details.
 
-Under the diagram, for the environment it shows: the links to its resources in the Azure portal, what it cost and
-what the resources it shares with the others cost (see "Cost"), and per deployable the "Code" and "Delivery" cards of
+Under the diagram, for the environment it shows: the links to its resources in the Azure portal, what the pipeline's
+hourly health reports found (see "Availability"), what it cost and what the resources it shares with the others cost
+(see "Cost"), and per deployable the "Code" and "Delivery" cards of
 the health view (see "Code" and "Delivery"); then the legend.
 
 A deployment from before the runtime view has no `runtime/`: the tab then says that the diagram is not available for
@@ -321,12 +336,15 @@ The manifest maps each element's alias to what the browser knows, so the page ne
       "region": "centralus", "regionAlias": "region_data", "url": null },
     { "alias": "swa_dashboard", "qualifiedName": "sub.rg_tier.region_data.swa_dashboard", "kind": "staticsite",
       "deployable": "dashboard", "name": "swa-cmdemo2-uat-dashboard", "region": "centralus",
-      "regionAlias": "region_data", "url": null }
+      "regionAlias": "region_data", "url": null },
+    { "alias": "dep_ui_LLM_gateway", "qualifiedName": "dep_ui_LLM_gateway", "kind": "dependency", "deployable": "ui",
+      "name": "LLM gateway", "healthCheck": "LlmGateway", "dependencyKind": "external", "url": null }
   ],
   "regions": [ { "alias": "region_primary", "qualifiedName": "sub.rg_tier.region_primary", "name": "westus3", "roles": [ "primary" ] } ],
   "edges": [
     { "id": "fd_ui-to-app_ui_primary", "from": "fd_ui", "to": "app_ui_primary", "kind": "origin", "priority": 1 },
-    { "id": "app_ui_primary-to-sqldb", "from": "app_ui_primary", "to": "sqldb", "kind": "sql" }
+    { "id": "app_ui_primary-to-sqldb", "from": "app_ui_primary", "to": "sqldb", "kind": "sql" },
+    { "id": "dep_ui_LLM_gateway-to-app_ui_primary", "from": "app_ui_primary", "to": "dep_ui_LLM_gateway", "kind": "dependency" }
   ],
   "generated": "2026-10-04T22:00:00Z",
   "plantuml": "1.2026.8"
@@ -336,9 +354,19 @@ The manifest maps each element's alias to what the browser knows, so the page ne
 - **Aliases** (`<d>` is the deployable's name with every character but a letter or a digit as `_`): `browser`; the
   boundaries `sub`, `rg_edge`, `rg_tier`, `afd`, `region_primary`, `region_standby`, `region_data`, `region_static`
   (a region with two roles is one boundary, named after its first role), `plan_primary`, `plan_standby`; the nodes
-  `fd_<d>`, `app_<d>_primary`, `app_<d>_standby`, `sqldb`, `swa_<d>`. A relationship's id is `<from>-to-<to>`.
-- **Kinds**: nodes `person`, `frontdoor`, `webapp`, `sql`, `staticsite`; relationships `public` (the browser to a
-  public address), `origin` (with its `priority`), `sql`, `dashboard`. An unknown kind is drawn and not updated.
+  `fd_<d>`, `app_<d>_primary`, `app_<d>_standby`, `sqldb`, `swa_<d>`, and `dep_<d>_<n>` for a dependency (`<n>` is
+  its name, written as `<d>` is). A relationship's id is `<from>-to-<to>`: the name the SVG gives the drawn link.
+  A web app's relationship to a dependency is drawn from the dependency's side (which puts its box under or above
+  the subscription and its number line into a free column), so its id is `dep_<d>_<n>-to-app_<d>_<role>`, while
+  its `from` is the web app and its `to` the dependency.
+- **Kinds**: nodes `person`, `frontdoor`, `webapp`, `sql`, `staticsite`, `dependency`; relationships `public` (the
+  browser to a public address), `origin` (with its `priority`), `sql`, `dashboard`, `dependency`. An unknown kind is
+  drawn and not updated.
+- **A dependency** (`kind` `dependency`) also has `healthCheck`, the name of the entry of its web apps' detailed
+  health check that tells its state (`null` when the system names none), and `dependencyKind`, what it is in the
+  system's own words (`external`). It comes from `deployables[].dependencies` of `system.json`, a list of
+  `{ "name": "LLM gateway", "healthCheck": "LlmGateway", "kind": "external" }`; a system without it has no such node
+  and no such relationship, and its diagram is as before.
 - **Addresses**: `url` is the address the page checks (web app, Front Door endpoint: the same as in `topology.json`,
   which is how a node finds its checks) or, for a static site, the dashboard's address where the deployment knows it
   (its own environment's); `null` for the database, which the browser cannot probe, for a Front Door endpoint that
@@ -365,10 +393,14 @@ missing one fails the deployment:
 live values cannot be written into the rendered text. Instead every node, every region of web apps and every Front
 Door and database relationship carries a transparent image of a fixed size in its description: PlantUML lays it out
 like any image, the page hides it and draws into its rectangle (`js/runtime.js`). The diagram's look before an update
-(and when opened on its own) is neutral. The sizes are set in `deploy-staticwebapp.ps1`: a web app's slot is 250 by
-146 (the badge, seven lines 15 px apart and the history strip), a Front Door endpoint's 250 by 98, a database's and
-a static site's 250 by 46, a region's 190 by 22, a relationship's 160 by 34. The script draws as many lines as a slot
-holds, so a newer page on an older diagram loses lines, never its place.
+(and when opened on its own) is neutral. The sizes are set in `deploy-staticwebapp.ps1`: a web app's slot is 232 by
+146 (the badge, seven lines 15 px apart and the history strip), and 232 by 161 for a deployable with
+`healthDetailPath` (an eighth line: the marks of its health check); a Front Door endpoint's 232 by 98; a database's,
+a static site's and a dependency's 232 by 46; a region's 190 by 22; a relationship's 144 by 34. The script draws as
+many lines as a slot holds, so a newer page on an older diagram loses lines, never its place (the marks are the last
+line: a diagram from before them loses only them), and it spreads the 30 bars of the history strip over the slot's
+width. The widths are what the widest line needs: every pixel of them is paid for by the scale of the whole diagram
+(a slot of 250 and a number line of 160 made cmdemo2's diagram wider than the page at its smallest scale).
 
 **The update.** `RuntimePayloadBuilder` (plain C#, unit-tested) maps the monitor's state and the manifest to a
 payload, and `js/runtime.js` draws it. Every word and state is decided in C#; the script sets `data-rt-state` on the
@@ -383,7 +415,10 @@ The payload, as JSON:
                           { "text": "pinned 2.4.21: in sync", "tone": "insync" },
                           { "text": "12 req/min · p95 85 ms", "tone": "plain", "parts": [ "..." ],
                             "trend": { "points": [ 0.25, 1, 0.5 ], "title": "Requests per minute, last 3 checks: 10 to 40, now 20" } },
-                          { "text": "primary: serves traffic", "tone": "serving" } ],
+                          { "text": "primary: serves traffic", "tone": "serving" },
+                          { "text": "LlmGateway degraded", "tone": "warn",
+                            "marks": [ { "state": "healthy", "title": "API: Healthy. API layer is healthy. Took under 0.1 ms." },
+                                       { "state": "degraded", "title": "LlmGateway: Degraded. ..." } ] } ],
                "history": [ "healthy", "unhealthy", "healthy" ], "title": "app-cmdemo2-uat-ui: Healthy\n...",
                "link": { "href": "https://...", "title": "Live Metrics ..." }, "nameLink": { "href": "https://...", "title": "The web app ..." } } ],
   "regions": [ { "alias": "region_primary", "state": "serving", "label": "serving traffic" } ],
@@ -403,8 +438,11 @@ Optional in the payload, and absent where there is nothing to say: `link` (a til
 and `nameLink` (the node's name, which PlantUML drew: the script wraps it), each `{ href, title }`; a line's `parts`
 (the same words as `text` in pieces, present only when a piece has a `link`); `trend` on a line or a relationship
 (`points` are heights from 0 to 1, oldest first, on a scale from zero to the largest reading; `title` is the same in
-words). The script draws a link as an `a` element (new tab, `rel="noopener"`, its own `title`) and gives the focus
-back to the link that had it when an update redraws the tile.
+words); a line's `marks`, one per entry of the node's detailed health check (`state` `healthy`, `degraded`, `failed`
+or `unknown`, drawn before the line's words as a check, a warning triangle, a cross or dots, each with its `title`
+as tooltip and accessible name; eight at most, those that are not healthy first). The script draws a link as an `a`
+element (new tab, `rel="noopener"`, its own `title`) and gives the focus back to the link that had it when an update
+redraws the tile.
 
 ## The cluster view
 
@@ -669,8 +707,8 @@ global.json                  the SDK
 src/Dashboard                the Blazor WebAssembly app
   App.razor                  the page: header, view tabs, environments, footer, polling
   Components/                tile, history strip, trend line, state badge, deployable section, version line, code and
-                             delivery cards, cost line, events strip, links, runtime view, legend, cluster view (its
-                             cards, tables, meter and badge)
+                             delivery cards, cost line, availability line, events strip, links, runtime view, legend,
+                             cluster view (its cards, tables, meter and badge)
   Health/                    the health logic, plain C# without a browser
   Runtime/                   the runtime view's files, payload and address, plain C# without a browser
   Cluster/                   the cluster view's files, states, grouping and words, plain C# without a browser
@@ -686,7 +724,9 @@ The health logic is in `src/Dashboard/Health` and has no dependency on the brows
 reading the pinned versions (`PinnedVersions`, `PinnedVersionsReader`) and comparing them with the nodes
 (`VersionAssessment`, `VersionSummary`), a node's telemetry with its process (`TelemetrySnapshot`, `ProcessVitals`),
 the trends (`Trend`, `Trends`), the events (`EventDetector`, `EventLog`), the build facts (`BuildInfo`, `BuildText`),
-the delivery facts (`DeliveryReport`, `DeliveryText`), the cost (`CostReport`, `CostText`) and the links (`LinkSet`, `LinkText`). The runtime view's logic is in `src/Dashboard/Runtime`: reading `runtime/`
+the entries of a detailed health check (`HealthDetail`, `HealthDetailText`),
+the delivery facts (`DeliveryReport`, `DeliveryText`) with the hourly health reports (`HealthReports`,
+`AvailabilityText`), the cost (`CostReport`, `CostText`) and the links (`LinkSet`, `LinkText`). The runtime view's logic is in `src/Dashboard/Runtime`: reading `runtime/`
 (`RuntimeManifestParser`, `RuntimeLoader`), the update of the diagram (`RuntimePayloadBuilder`) and the view in the
 address (`ViewAddress`). The cluster view's logic is in `src/Dashboard/Cluster`: the two files (`ClusterStatus`,
 `AksService`) and their reading (`ClusterReader`, `ClusterMonitor`), the states (`PodRules`, `ClusterAssessment`), the
@@ -754,10 +794,14 @@ Door, which would answer for one node only). An answer that is not this JSON is 
 `sql.perMinute` is every SQL command the process ran. An app may tell them apart: `sql.requests` (run while handling
 an HTTP request) and `sql.background` (all others, mostly the message bus polling the database). When both are there,
 the number the page shows for the web app's queries is `requests`, what traffic causes: on the web app to database
-arrow (with the background next to the role, "queries of the app · 55 background", and both in the tooltip), in the
+arrow (with the background next to the role, "app queries · 55 background", and both in the tooltip), in the
 database's tile (the sum over its web apps, the background in the tooltip) and as "SQL" on the health view's tile. An
 app that reports `perMinute` only (an older one) keeps the total everywhere. The arrow's trend follows the number
 shown.
+
+`http.perMinute` is every outgoing HTTP call of the process. The runtime diagram shows it on the arrow from a web
+app to its dependency when the deployable declares exactly one (see "The runtime view"); with more than one the
+arrows show a dash, because the app does not tell its calls apart.
 
 ### Process vitals
 
@@ -784,6 +828,46 @@ The panel at the bottom of the page sends two requests a second for a minute (`T
 chosen environment's public addresses, the Front Door endpoint or else the primary node, round-robin over
 `trafficPaths`. They are plain GETs in mode `no-cors` (`js/traffic.js`): the browser needs no CORS answer, and the
 response stays opaque. While it runs, the page checks every 10 s.
+
+## Health checks, entry by entry
+
+The health check a tile is about answers with a status only. An app may also answer a detailed health check, one
+entry per thing it depends on and checks; with `healthDetailPath` (for example `/_healthcheck/detailed`) the page
+reads it and shows which entry is the reason:
+
+```json
+{ "overallStatus": "Healthy", "totalDurationMs": 42.6,
+  "entries": [
+    { "name": "API", "status": "Healthy", "description": "API layer is healthy", "durationMs": 0.001 },
+    { "name": "DataAccess", "status": "Healthy", "description": "Database connection successful (Provider: ...)", "durationMs": 42.07 },
+    { "name": "LlmGateway", "status": "Degraded", "description": "Chat client answered slowly: 4.2 s", "durationMs": 4211.9 } ] }
+```
+
+`status` is `Healthy`, `Degraded` or `Unhealthy` (the states of ASP.NET Core's health checks); anything else, or
+none, is shown as "Not known". `description` and `durationMs` are optional. An entry without a `name` is left out,
+and an answer without a single named entry is no answer.
+
+- **When it is read.** With every round of checks, from each regional node, next to its health check, and only while
+  the probe is "Health check": the detailed check connects to the database like the health check itself, and
+  "Liveness" is there to leave the database alone. A Front Door endpoint is not asked (it would answer for one
+  node). The body is read whatever the HTTP status, because a failing health check answers 503 with the same JSON.
+  Any origin must be allowed to read it, like the telemetry.
+- **What is kept.** The answer of the last check only: no answer, an answer that is not this JSON, or the probe
+  Liveness leaves a tile without marks, never with the marks of an earlier check, and fails no check.
+- **Health view.** A block "Health checks" on the web app's tile: one mark per entry, with the entry's name and its
+  state as a shape (check, warning triangle, cross, dots) and, when it is not healthy, as a bold word on a wash; for
+  a screen reader every mark has its state in words. The tooltip has the check's own words and how long it took
+  ("DataAccess: Healthy. Database connection successful. Took 42.1 ms."). A tile that is unhealthy or unreachable
+  says under the marks which entries are the reason: "Not healthy: DataAccess (Unhealthy: Database connection
+  failed: login timeout expired)".
+- **Runtime view.** The last line of the web app's tile: the same marks (eight at most, those that are not healthy
+  first), each with its tooltip, and a summary in words: "8 checks healthy", the one entry that is not ("LlmGateway
+  degraded"), or how many are not ("2 of 8 checks not healthy"). The tooltip of an unhealthy web app ends with the
+  same "Not healthy: ..." sentence. A dependency outside the subscription takes its state from the entry the
+  deployment named for it (see "The runtime view").
+
+The health view's state of a tile is still the health check's HTTP status and nothing else: a `Degraded` entry
+changes no state, no summary and no event.
 
 ## What just happened
 
@@ -850,6 +934,8 @@ reading that fails later keeps the last good one.
   "failover": { "environment": "uat", "at": "2026-10-05T12:00:00Z", "seconds": 44 } }
 ```
 
+An environment of the file may also have `health`, what its hourly health reports found (see "Availability").
+
 The "Delivery" card of a deployable in an environment shows what is there:
 
 | Line | From |
@@ -865,6 +951,43 @@ facts as of the last change". Entries of the file that belong to no deployable o
 own after the environment's deployables: first the one named `system`, the system project itself, labelled "the
 system (infrastructure and pipeline)", then the others (such as the dashboard). The last failover test of the system
 (`failover`: environment, when, the seconds until the standby answered) is a line above the events.
+
+## Availability
+
+The system's pipeline has an hourly runbook "Health report" in Octopus Deploy: per environment it asks every node
+and the public address, and the run fails when one is not healthy. The workflow that publishes the delivery facts
+counts those runs (`scripts/write-delivery.ps1` of the system repository: one read of Octopus per environment), and
+an environment of `delivery.json` then has:
+
+```json
+{ "name": "prod", "deployables": [ ],
+  "health": { "last24Hours": { "reports": 24, "healthy": 23 }, "last7Days": { "reports": 166, "healthy": 164 },
+              "lastFailure": "2026-10-06T16:13:00Z" } }
+```
+
+| Field | What it is |
+|---|---|
+| `last24Hours`, `last7Days` | `reports`: the health reports of the environment that ended in that time (succeeded, failed or timed out; a cancelled one is in neither number). `healthy`: those of them that succeeded. |
+| `lastFailure` | When the last report that did not succeed ended; `null` when none did in seven days. |
+| `health` itself | `null` or absent when the system has no such runbook or its runs could not be read. |
+
+Under the environment's name in the health view ("Availability") and under the diagram in the runtime view
+("Availability of prod"), the page shows:
+
+> Healthy in **23 of 24** hourly checks (95.8 %) in 24 hours · **164 of 166** in 7 days · last failure **9 h ago**
+> Hourly checks by the pipeline, not continuous monitoring.
+
+- The second line is part of the element, not a tooltip: nobody should read the numbers as monitoring. An outage
+  between two reports is not counted, and a report that fails says a node did not answer at that moment, not for how
+  long. The tooltip says who counts and how, and when the delivery facts last changed (the counts are as of then).
+- The percentage has one decimal and is never rounded to 100 % while a report failed. The seven days' percentage is
+  the tooltip of that part.
+- "last failure" is relative, with the exact time in its tooltip; without a failure in seven days the line ends "no
+  failure in 7 days". A window without a single report says so ("No hourly check ended in 24 hours": a system that
+  is dormant, or younger than the window) and claims nothing.
+- A part the file does not have is left out; an environment without `health` (an older file, a `null`, counts that
+  cannot be: more healthy reports than reports) has no line. It is history, not the state of this moment: no colour,
+  no icon, no event, and it does not change the summary.
 
 ## Cost
 

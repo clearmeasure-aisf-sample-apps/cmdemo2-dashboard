@@ -33,6 +33,12 @@ public static class Trends
             : node.TrendOf(telemetry => telemetry.Sql, "SQL commands per minute");
     }
 
+    public static Trend? Http(TargetStatus node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        return node.TrendOf(telemetry => telemetry.Http, "Outgoing HTTP calls per minute");
+    }
+
     public static Trend? Cpu(TargetStatus node)
     {
         ArgumentNullException.ThrowIfNull(node);

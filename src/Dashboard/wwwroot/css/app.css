@@ -723,6 +723,81 @@ main {
   height: 0.85rem;
 }
 
+/* The entries of a web app's detailed health check: one small mark each, with the entry's name. The state is the
+   icon's shape and, when it is not healthy, a bold word and a wash: never colour alone. */
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  padding: 0.05rem 0.5rem 0.05rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.check .state-icon,
+.tile__detail--failed .state-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.check__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check__state {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.check--degraded {
+  border-color: var(--ink);
+  background: var(--serious-wash);
+}
+
+.check--unhealthy {
+  border-color: var(--ink);
+  background: var(--critical-wash);
+}
+
+/* Which entries are the reason an unhealthy node fails its health check. */
+.tile__detail--failed {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.tile__detail--failed .state-icon {
+  flex: none;
+  align-self: center;
+}
+
+/* Words for a screen reader where the shape already says them to the eye. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .metrics--compact {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.4rem 0.75rem;
@@ -1003,8 +1078,40 @@ main {
 }
 
 /* Under an environment's name: a row of its own in the heading. */
-.environment__header .cost {
+.environment__header .cost,
+.environment__header .availability {
   flex-basis: 100%;
+}
+
+/* ---------- Availability ---------- */
+
+/* What the pipeline's hourly health reports found: quiet text with the counts in ink, like the cost. It is history,
+   not the state of this moment, so it has no colour and no icon; its last part says what kind of number it is. */
+.availability {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.45rem;
+  color: var(--ink-secondary);
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.availability__label {
+  font-weight: 600;
+}
+
+.availability__part strong {
+  color: var(--ink);
+}
+
+.availability__part + .availability__part::before {
+  content: "\00B7\00A0";
+}
+
+.availability__note {
+  flex-basis: 100%;
+  font-size: 0.82rem;
 }
 
 /* ---------- History strip ---------- */
@@ -1250,6 +1357,16 @@ main {
 .rt-line--warn .rt-icon__fill { stroke: #ffe0b2; fill: none; }
 .rt-line--warn .rt-icon__fill { fill: #ffe0b2; }
 .rt-line--warn .rt-icon__mark { stroke: #b71c1c; }
+
+/* The marks of a detailed health check on a tile: a check, a warning triangle, a cross or dots, one per entry. */
+.rt-tile .rt-check.rt-check--healthy .rt-row__icon .rt-icon__fill,
+.rt-tile .rt-check.rt-check--failed .rt-row__icon .rt-icon__fill { fill: #ffffff; stroke: none; }
+.rt-tile .rt-check.rt-check--healthy .rt-row__icon .rt-icon__mark { stroke: #1b5e20; }
+.rt-tile .rt-check.rt-check--failed .rt-row__icon .rt-icon__mark { stroke: #b71c1c; }
+.rt-tile .rt-check.rt-check--degraded .rt-row__icon .rt-icon__fill { fill: #ffe0b2; stroke: none; }
+.rt-tile .rt-check.rt-check--degraded .rt-row__icon .rt-icon__mark { stroke: #7a3b00; }
+.rt-tile .rt-check.rt-check--unknown .rt-row__icon .rt-icon__ring,
+.rt-tile .rt-check.rt-check--unknown .rt-row__icon .rt-icon__line { stroke: #ffffff; }
 
 .rt-bar--healthy { fill: #a5d6a7; }
 .rt-bar--unhealthy { fill: #ffcc80; }

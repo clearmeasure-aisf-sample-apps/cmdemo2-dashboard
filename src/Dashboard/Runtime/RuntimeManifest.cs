@@ -32,6 +32,12 @@ public enum RuntimeNodeKind
 
     /// <summary>A Static Web App: the dashboard.</summary>
     StaticSite,
+
+    /// <summary>
+    /// Something a deployable depends on and the system does not own (an external service), drawn outside the
+    /// subscription: the browser cannot ask it, and a web app's detailed health check tells its state.
+    /// </summary>
+    Dependency,
 }
 
 public enum RuntimeEdgeKind
@@ -49,6 +55,9 @@ public enum RuntimeEdgeKind
 
     /// <summary>The browser to the dashboard.</summary>
     Dashboard,
+
+    /// <summary>A web app to something its deployable depends on.</summary>
+    Dependency,
 }
 
 /// <summary>
@@ -68,6 +77,11 @@ public sealed record RuntimeManifest(
 /// The address the dashboard checks (web app, Front Door endpoint) or serves from (static site); null when the
 /// browser does not know one, and always for the database.
 /// </param>
+/// <param name="HealthCheck">
+/// For a dependency: the name of the entry of its web apps' detailed health check that tells its state; null when the
+/// system names none.
+/// </param>
+/// <param name="DependencyKind">For a dependency: what it is, in the system's own words (<c>external</c>).</param>
 public sealed record RuntimeNode(
     string Alias,
     RuntimeNodeKind Kind,
@@ -76,7 +90,9 @@ public sealed record RuntimeNode(
     string? Deployable = null,
     string? Role = null,
     string? Region = null,
-    string? RegionAlias = null);
+    string? RegionAlias = null,
+    string? HealthCheck = null,
+    string? DependencyKind = null);
 
 /// <param name="Alias">The region boundary's alias.</param>
 /// <param name="Name">The Azure region.</param>

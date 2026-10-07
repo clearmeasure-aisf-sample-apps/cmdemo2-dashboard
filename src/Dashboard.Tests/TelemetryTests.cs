@@ -220,9 +220,9 @@ public class TelemetryTests
         var payload = RuntimePayloadBuilder.Build(Manifest(), Uat(Split(62, 55), Split(0, 48)), Page, TimeZoneInfo.Utc);
 
         var primary = Edge(payload, "app_ui_primary-to-sqldb");
-        Assert.Equal(("62", "calls/min", "queries of the app · 55 background"), Triple(primary));
+        Assert.Equal(("62", "calls/min", "app queries · 55 background"), Triple(primary));
         Assert.Contains("62 SQL commands while handling requests (the number shown: what traffic causes) and 55 in the background (mostly the message bus polling the database), 117 in all, p95 12 ms", primary.Title, StringComparison.Ordinal);
-        Assert.Equal(("0", "calls/min", "queries of the app · 48 background"), Triple(Edge(payload, "app_ui_standby-to-sqldb")));
+        Assert.Equal(("0", "calls/min", "app queries · 48 background"), Triple(Edge(payload, "app_ui_standby-to-sqldb")));
 
         var database = payload.Nodes.Single(tile => tile.Alias == "sqldb");
         Assert.Equal("62 queries/min", database.Facts);
@@ -235,7 +235,7 @@ public class TelemetryTests
         var payload = RuntimePayloadBuilder.Build(Manifest(), Uat(Split(62, 55), Snapshot(sql: 9)), Page, TimeZoneInfo.Utc);
 
         var standby = Edge(payload, "app_ui_standby-to-sqldb");
-        Assert.Equal(("9", "calls/min", "queries of the app"), Triple(standby));
+        Assert.Equal(("9", "calls/min", "app queries"), Triple(standby));
         Assert.Contains("counted by the web app: 9 SQL commands, p95 12 ms;", standby.Title, StringComparison.Ordinal);
         Assert.DoesNotContain("background", standby.Title, StringComparison.Ordinal);
 

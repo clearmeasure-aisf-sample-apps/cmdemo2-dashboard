@@ -102,7 +102,9 @@ public static class RuntimeManifestParser
                     Text(element, "deployable"),
                     Text(element, "role")?.ToLowerInvariant(),
                     Text(element, "region"),
-                    Text(element, "regionAlias"));
+                    Text(element, "regionAlias"),
+                    Text(element, "healthCheck"),
+                    Text(element, "dependencyKind"));
             });
             var regions = ReadArray(root, "regions", errors, (element, path) =>
             {
@@ -243,6 +245,7 @@ public static class RuntimeManifestParser
         "webapp" => RuntimeNodeKind.WebApp,
         "sql" => RuntimeNodeKind.Sql,
         "staticsite" => RuntimeNodeKind.StaticSite,
+        "dependency" => RuntimeNodeKind.Dependency,
         _ => RuntimeNodeKind.Other,
     };
 
@@ -252,6 +255,7 @@ public static class RuntimeManifestParser
         "origin" => RuntimeEdgeKind.Origin,
         "sql" => RuntimeEdgeKind.Sql,
         "dashboard" => RuntimeEdgeKind.Dashboard,
+        "dependency" => RuntimeEdgeKind.Dependency,
         _ => RuntimeEdgeKind.Other,
     };
 }

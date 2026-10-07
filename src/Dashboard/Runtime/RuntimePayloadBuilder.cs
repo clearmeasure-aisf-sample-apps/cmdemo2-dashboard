@@ -11,7 +11,9 @@ namespace Dashboard.Runtime;
 /// from a browser: it is drawn reachable when the health check of a web app that uses it passes. The numbers on the
 /// relationships are the web apps' own counts of the last minute (<see cref="TelemetrySnapshot"/>); a dash where a web
 /// app reports none. A web app's tile also shows its process's vitals and, next to the numbers, their trend over the
-/// last checks; where the topology has a link for a number or a name, the payload carries it.
+/// last checks; where the topology has a link for a number or a name, the payload carries it. Where a web app
+/// answers its detailed health check (<see cref="HealthDetail"/>), its tile has one mark per entry, and a dependency of
+/// its deployable (a node of the manifest outside the subscription) takes its state from the entry the manifest names.
 /// </summary>
 public static class RuntimePayloadBuilder
 {
@@ -24,6 +26,12 @@ public static class RuntimePayloadBuilder
     /// <summary>The number line's placeholder where no web app reports its calls.</summary>
     public const string NoNumber = "–";
     public const string CallsUnit = "calls/min";
+
+    /// <summary>How many marks of a detailed health check a tile's line holds; the entries that are not healthy come first.</summary>
+    public const int MostMarks = 8;
+
+    /// <summary>How many characters of a health check's own words fit the line of a dependency's tile.</summary>
+    public const int DescriptionLength = 36;
 
     private sealed record Entry(DeployableStatus Deployable, TargetStatus Target, ServingAssessment Assessment, TargetStatus? Expected);
 
@@ -47,9 +55,12 @@ public static class RuntimePayloadBuilder
 
         var tiles = manifest.Nodes
             .Where(node => node.Kind != RuntimeNodeKind.Person)
-            .Select(node => node.Kind == RuntimeNodeKind.Sql
-                ? DatabaseTile(node, Clients(manifest, node, byAlias), zone, environment?.Info.Links)
-                : Tile(node, byAlias.GetValueOrDefault(node.Alias), environment, page, zone))
+            .Select(node => node.Kind switch
+            {
+                RuntimeNodeKind.Sql => DatabaseTile(node, Clients(manifest, node, RuntimeEdgeKind.Sql, byAlias), zone, environment?.Info.Links),
+                RuntimeNodeKind.Dependency => DependencyTile(node, Clients(manifest, node, RuntimeEdgeKind.Dependency, byAlias), zone),
+                _ => Tile(node, byAlias.GetValueOrDefault(node.Alias), environment, page, zone),
+            })
             .ToList();
         var reachable = manifest.Nodes
             .Where(node => node.Kind == RuntimeNodeKind.Sql && tiles.Any(tile => tile.Alias == node.Alias && tile.State == Healthy))
@@ -140,12 +151,110 @@ public static class RuntimePayloadBuilder
         };
     }
 
-    /// <summary>The checked web apps with a relationship to the database.</summary>
-    private static List<Entry> Clients(RuntimeManifest manifest, RuntimeNode database, Dictionary<string, Entry> byAlias) =>
+    /// <summary>The checked web apps with a relationship of that kind to the node (the database, a dependency).</summary>
+    private static List<Entry> Clients(RuntimeManifest manifest, RuntimeNode node, RuntimeEdgeKind kind, Dictionary<string, Entry> byAlias) =>
         [.. manifest.Edges
-            .Where(edge => edge.Kind == RuntimeEdgeKind.Sql && edge.To == database.Alias)
+            .Where(edge => edge.Kind == kind && edge.To == node.Alias)
             .Select(edge => byAlias.GetValueOrDefault(edge.From))
             .OfType<Entry>()];
+
+    /// <summary>
+    /// A dependency from the detailed health checks of the web apps that use it: the entry the manifest names says its
+    /// state. Reachable when that entry is healthy on a web app that passes its health check; degraded or unhealthy as
+    /// the entry says; and neutral, with the reason in words, whenever no web app tells (no entry named, no detailed
+    /// health check, the probe Liveness, which reads none).
+    /// </summary>
+    private static RuntimeTile DependencyTile(RuntimeNode node, List<Entry> clients, TimeZoneInfo zone)
+    {
+        if (clients.Count == 0)
+        {
+            return NeutralTile(node, "Not probed", "no web app that uses it is checked", $"{node.Name}: this page checks no web app that uses it.");
+        }
+
+        if (node.HealthCheck is not { } check)
+        {
+            return NeutralTile(
+                node,
+                "Not probed",
+                "no health check names it",
+                $"{node.Name}: the system names no entry of the web apps' detailed health check for it (dependencies[].healthCheck in system.json), so this page cannot tell its state.");
+        }
+
+        if (clients.All(entry => entry.Target.Last is { Probe: ProbeKind.Liveness }))
+        {
+            return NeutralTile(
+                node,
+                "Not probed",
+                "probe Liveness leaves it alone",
+                $"{node.Name}: the probe is Liveness, which does not read what the web apps' health checks found. Choose Health check to see its state.");
+        }
+
+        var found = clients
+            .Select(entry => (entry.Target, Check: entry.Target.HealthDetail?.Find(check)))
+            .Where(reading => reading.Check is not null)
+            .Select(reading => (reading.Target, Check: reading.Check!))
+            .ToList();
+        if (found.Count == 0)
+        {
+            if (clients.Any(entry => entry.Target.State == HealthState.Pending))
+            {
+                return new RuntimeTile(node.Alias, Checking, "Checking", null, [new RuntimeTileLine("waiting for the health checks", "muted")], null, $"{node.Name}: waiting for the health checks of the web apps that use it.");
+            }
+
+            return clients.Any(entry => entry.Target.HealthDetail is not null)
+                ? NeutralTile(
+                    node,
+                    "Not known",
+                    $"no health check entry {HealthDetailText.Brief(check, 14)}",
+                    $"{node.Name}: the detailed health check of the web apps that use it has no entry named {check}, so this page cannot tell its state.")
+                : NeutralTile(
+                    node,
+                    "Not known",
+                    "no detailed health check answers",
+                    $"{node.Name}: no web app that uses it answers its detailed health check, where the entry {check} would tell its state.");
+        }
+
+        var worst = found.OrderBy(reading => HealthDetailText.Severity(reading.Check.State)).First();
+        var passed = found.Where(reading => reading.Check.IsHealthy && reading.Target.Last is { State: HealthState.Healthy, Probe: ProbeKind.Health }).ToList();
+        if (passed.Count > 0)
+        {
+            var (target, entry) = passed[0];
+            var names = string.Join(", ", passed.Select(reading => reading.Target.Name));
+            var reachable = $"{node.Name}: reachable, by the health check of {names} (last {TimeText.Clock(target.Last!.CheckedAt, zone)}). The browser does not call it. {HealthDetailText.Title(entry)}";
+
+            // One web app reaches it and another says otherwise: reachable, and the line names the one that differs.
+            if (!worst.Check.IsHealthy)
+            {
+                return new RuntimeTile(
+                    node.Alias,
+                    Healthy,
+                    "Reachable",
+                    null,
+                    [new RuntimeTileLine($"{worst.Target.Region ?? worst.Target.Name} reports it {HealthDetailText.Label(worst.Check.State).ToLowerInvariant()}", "warn")],
+                    null,
+                    $"{reachable} Not so for {worst.Target.Name}: {HealthDetailText.Title(worst.Check)}");
+            }
+
+            var line = entry.Description is { } description
+                ? HealthDetailText.Brief(description, DescriptionLength)
+                : $"health check {HealthDetailText.Brief(check, 14)} passed";
+            return new RuntimeTile(node.Alias, Healthy, "Reachable", null, [new RuntimeTileLine(line, "ok")], null, reachable);
+        }
+
+        var label = HealthDetailText.Label(worst.Check.State);
+        var words = worst.Check.Description is { } said ? HealthDetailText.Brief(said, DescriptionLength) : $"health check {HealthDetailText.Brief(check, 14)}: {label.ToLowerInvariant()}";
+        var title = $"{node.Name}: by the health check of {worst.Target.Name} (last {TimeText.Clock(worst.Target.Last?.CheckedAt ?? worst.Target.HealthDetail!.ReadAt, zone)}). The browser does not call it. {HealthDetailText.Title(worst.Check)}";
+        return worst.Check.State switch
+        {
+            CheckState.Unhealthy or CheckState.Degraded => new RuntimeTile(node.Alias, Unhealthy, label, null, [new RuntimeTileLine(words, "warn")], null, title),
+            CheckState.Unknown => NeutralTile(node, "Not known", words, title),
+            _ => NeutralTile(
+                node,
+                "Not confirmed",
+                "no web app that reports it passes",
+                $"{node.Name}: the entry {check} is healthy, but no web app that reports it passes its own health check, so this page does not call it reachable."),
+        };
+    }
 
     /// <summary>
     /// The database from the web apps' health checks, which connect to it: one that passes says the database answered.
@@ -230,12 +339,44 @@ public static class RuntimePayloadBuilder
         }
 
         lines.Add(entry.Assessment.OnlyNode is null ? RoleLine(target, entry.Expected) : SingleNodeLine(target, entry.Expected));
-        return Checked(node, target, lines, zone) with
+
+        // Last, so a diagram from before this line (a slot of seven lines) loses it and nothing else.
+        if (target.HealthDetail is { } detail)
+        {
+            lines.Add(ChecksLine(detail));
+        }
+
+        return Checked(node, target, lines, zone, HealthDetailText.Failed(target.HealthDetail)) with
         {
             Link = Link(target, LinkSet.LiveMetrics, node.Name),
             NameLink = Link(target, LinkSet.Portal, node.Name),
         };
     }
+
+    /// <summary>
+    /// What the node's health check found, as one line: a mark per entry (those that are not healthy first when there
+    /// are more than the line holds) and the summary in words.
+    /// </summary>
+    private static RuntimeTileLine ChecksLine(HealthDetail detail)
+    {
+        var failing = detail.NotHealthy;
+        var shown = detail.Entries.Count <= MostMarks
+            ? detail.Entries
+            : [.. failing.Concat(detail.Entries.Where(entry => entry.IsHealthy)).Take(MostMarks)];
+        return new RuntimeTileLine(
+            HealthDetailText.Summary(detail),
+            failing.Count > 0 ? "warn" : "plain",
+            Marks: [.. shown.Select(entry => new RuntimeCheckMark(MarkOf(entry.State), HealthDetailText.Title(entry)))]);
+    }
+
+    /// <summary>The state word of a mark, as the payload carries it.</summary>
+    public static string MarkOf(CheckState state) => state switch
+    {
+        CheckState.Healthy => "healthy",
+        CheckState.Degraded => "degraded",
+        CheckState.Unhealthy => "failed",
+        _ => "unknown",
+    };
 
     /// <summary>A node's role and whether the deployable's traffic goes through it.</summary>
     private static RuntimeTileLine RoleLine(TargetStatus target, TargetStatus? expected)
@@ -523,7 +664,8 @@ public static class RuntimePayloadBuilder
                     { SplitsSql: true } => string.Create(CultureInfo.InvariantCulture, $"Last minute, counted by the web app: {telemetry.SqlRequests} SQL commands while handling requests (the number shown: what traffic causes) and {telemetry.SqlBackground} in the background (mostly the message bus polling the database), {telemetry.Sql} in all{latency}; its health checks query the database too."),
                     _ => string.Create(CultureInfo.InvariantCulture, $"Last minute, counted by the web app: {telemetry.Sql} SQL commands{latency}; its health checks query the database too."),
                 };
-                const string Queries = "queries of the app";
+                // Short words: they stand under the number, in the narrow column between two frames of the diagram.
+                const string Queries = "app queries";
                 return new RuntimeEdgeMark(
                     edge.Id,
                     state,
@@ -533,6 +675,33 @@ public static class RuntimePayloadBuilder
                     $"{edge.From} to the database. {Words(state)} {counted}",
                     from is null || telemetry is null ? null : Link(from.Target, LinkSet.Dependencies, from.Target.Name),
                     from is null ? null : RuntimeTrend.Of(Trends.Sql(from.Target)));
+            }
+
+            case RuntimeEdgeKind.Dependency:
+            {
+                // As to the database: a web app that is down calls nothing, and the dependency is not the reason.
+                var carries = from is null ? Neutral : Carries(from);
+                var state = carries == "down" ? "idle" : carries;
+                var telemetry = from?.Target.Telemetry;
+
+                // The app counts its outgoing HTTP calls as one number: it is this dependency's only when the web app
+                // has no other one.
+                var only = manifest.Edges.Count(other => other.Kind == RuntimeEdgeKind.Dependency && other.From == edge.From) == 1;
+                var counted = (only, telemetry) switch
+                {
+                    (false, _) => "Calls per minute: the web app counts its outgoing HTTP calls as one number, and it has more than one dependency.",
+                    (_, null) => "Calls per minute: the web app reports none.",
+                    _ => string.Create(CultureInfo.InvariantCulture, $"Last minute, counted by the web app: {telemetry.Http} outgoing HTTP calls, all of them (it has this one dependency)."),
+                };
+                return new RuntimeEdgeMark(
+                    edge.Id,
+                    state,
+                    only ? Number(telemetry?.Http) : NoNumber,
+                    CallsUnit,
+                    only ? "outgoing HTTP calls" : "not counted apart",
+                    $"{edge.From} to {manifest.Nodes.FirstOrDefault(node => node.Alias == edge.To)?.Name ?? edge.To}. {Words(state)} {counted}",
+                    null,
+                    only && from is not null ? RuntimeTrend.Of(Trends.Http(from.Target)) : null);
             }
 
             case RuntimeEdgeKind.Public:
