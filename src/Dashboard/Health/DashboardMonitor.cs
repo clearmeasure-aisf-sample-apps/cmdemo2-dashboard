@@ -99,7 +99,8 @@ public sealed class DashboardMonitor
     /// <summary>
     /// Checks every endpoint at the same time. Each result is recorded as it arrives, so a node that hangs until its
     /// timeout delays neither the others nor their display. The pinned versions are read at the same time, once per
-    /// environment, and once per deployable that has a pin of its own (<c>pinUrl</c>): a file that cannot be read is a
+    /// environment, and once per deployable that has a pin of its own (<c>pinUrl</c>); with the probe Health check, a
+    /// node whose deployable names a <c>healthDetailPath</c> is also asked for the entries of its health check. A file that cannot be read is a
     /// result like any other and fails no check. So are the delivery facts, every <see cref="DeliveryInterval"/>, the
     /// cost, every <see cref="CostInterval"/>, and the two files of the cluster view, every round, where the topology
     /// names a cluster.
@@ -230,10 +231,17 @@ public sealed class DashboardMonitor
         var telemetry = target.Kind == TargetKind.Node && deployable.TelemetryPath is { } path
             ? _prober.ReadTelemetryAsync(target.Url, path, cancellationToken)
             : Task.FromResult<TelemetrySnapshot?>(null);
+
+        // And what its health check found, entry by entry: only with the probe Health check, because the detailed
+        // check connects to the database like the health check itself, and Liveness is there to leave it alone.
+        var detail = target.Kind == TargetKind.Node && probe == ProbeKind.Health && deployable.HealthDetailPath is { } detailPath
+            ? _prober.ReadHealthDetailAsync(target.Url, detailPath, cancellationToken)
+            : Task.FromResult<HealthDetail?>(null);
         var result = await _prober.ProbeAsync(target.Url, deployable.PathFor(probe), deployable.VersionPath, cancellationToken);
         var before = NodeObservation.Of(target);
         target.Record(result with { Probe = probe });
         target.RecordTelemetry(await telemetry);
+        target.RecordHealthDetail(await detail);
         Events.AddRange(EventDetector.Node(
             // A check without telemetry (the app was down) is compared with the last reading that had some.
             before with { Telemetry = before.Telemetry ?? target.Samples.Reverse().Skip(1).FirstOrDefault(sample => sample is not null) },

@@ -14,7 +14,12 @@
 // Links and trends come with the payload too. A link ({ href, title }) is drawn as a real <a> element (a new tab, rel
 // noopener, its own <title>), so it takes the keyboard like any link; a redraw gives the focus back to the link that
 // had it. A trend ({ points: 0..1, title }) is drawn as a small line after its number, with its words in a <title>.
+// A line's marks ([{ state, title }], the entries of a detailed health check) are drawn before its words, one small
+// icon each: the shape says the state, the <title> the entry's name, state and words.
 const SVG_NS = 'http://www.w3.org/2000/svg';
+
+// How far "Fit to width" scales the diagram down before it scrolls sideways instead.
+const FIT_FLOOR = 0.7;
 
 function el(name, attributes, text) {
   const node = document.createElementNS(SVG_NS, name);
@@ -139,7 +144,22 @@ function icon(kind, cx, cy, cls) {
   return g;
 }
 
-// One centred row: an optional icon, the text (in pieces where a piece is a link), an optional trend.
+// The marks of a line: one icon per entry, each with its own title and a rectangle that takes the pointer.
+const MARK_STEP = 14;
+const MARK_ICON = { healthy: 'ok', degraded: 'warn', failed: 'unreachable' };
+function marks(group, left, baseline, list) {
+  list.forEach((mark, index) => {
+    const cx = left + index * MARK_STEP + 6;
+    const g = el('g', { class: `rt-check rt-check--${mark.state}`, role: 'img', 'aria-label': mark.title });
+    g.appendChild(el('title', {}, mark.title));
+    g.appendChild(icon(MARK_ICON[mark.state] || 'unknown', cx, baseline - 4, 'rt-row__icon'));
+    g.appendChild(el('rect', { class: 'rt-trend__hit', x: cx - 7, y: baseline - 11, width: MARK_STEP, height: 14 }));
+    group.appendChild(g);
+  });
+}
+
+// One centred row: an optional icon or the line's marks, the text (in pieces where a piece is a link), an optional
+// trend.
 function row(layer, centre, baseline, line, cls, iconKind, size, key) {
   const group = el('g', { class: `rt-row ${cls}` });
   layer.appendChild(group);
@@ -158,12 +178,14 @@ function row(layer, centre, baseline, line, cls, iconKind, size, key) {
     words.textContent = line.text;
   }
   group.appendChild(words);
-  const iconWidth = iconKind ? 16 : 0;
+  const checks = line.marks && line.marks.length > 0 ? line.marks : null;
+  const iconWidth = checks ? checks.length * MARK_STEP + 4 : iconKind ? 16 : 0;
   const trendWidth = line.trend ? TREND_WIDTH + 6 : 0;
   const textWidth = widthOf(words);
   const left = centre - (iconWidth + textWidth + trendWidth) / 2;
   words.setAttribute('x', left + iconWidth);
-  if (iconKind) group.insertBefore(icon(iconKind, left + 6, baseline - 4, 'rt-row__icon'), words);
+  if (checks) marks(group, left, baseline, checks);
+  else if (iconKind) group.insertBefore(icon(iconKind, left + 6, baseline - 4, 'rt-row__icon'), words);
   if (line.trend) sparkline(group, left + iconWidth + textWidth + 6, baseline - 10, TREND_WIDTH, 12, line.trend);
 }
 
@@ -225,9 +247,10 @@ function drawTile(group, tile) {
     baseline += 15;
   });
 
-  // The history strip, oldest on the left: the height says the state as well as the colour.
+  // The history strip, oldest on the left: the height says the state as well as the colour. Its 30 bars take the
+  // slot's width, 8 px each at most.
   if (history) {
-    const slots = 30, step = 8, bar = 6;
+    const slots = 30, step = Math.min(8, (width + 2) / slots), bar = step - 2;
     const start = centre - (slots * step - (step - bar)) / 2;
     const base = y + height - 1;
     const shown = history.slice(-slots);
@@ -302,10 +325,10 @@ export function mount(host, svgText) {
   // PlantUML fixes the size in an inline style; the page sizes it (actual size, or fitted to the width).
   svg.removeAttribute('style');
   svg.classList.add('runtime-svg');
-  // Fitted to the width, it never shrinks below three quarters of its size: the tiles' words stay legible, and a
-  // narrower window scrolls instead.
+  // Fitted to the width, it never shrinks below FIT_FLOOR of its size: the tiles' words (11.5 px) stay above 8 px,
+  // and a narrower window scrolls instead.
   const natural = parseFloat(svg.getAttribute('width')) || (svg.viewBox && svg.viewBox.baseVal ? svg.viewBox.baseVal.width : 0);
-  if (natural > 0) svg.style.setProperty('--rt-min-width', `${Math.round(natural * 0.75)}px`);
+  if (natural > 0) svg.style.setProperty('--rt-min-width', `${Math.round(natural * FIT_FLOOR)}px`);
   const ids = new Map();
   for (const group of svg.querySelectorAll('g[data-qualified-name]')) {
     if (group.id) ids.set(group.id, aliasOf(group.getAttribute('data-qualified-name')));

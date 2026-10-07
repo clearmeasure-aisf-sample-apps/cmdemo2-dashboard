@@ -33,6 +33,7 @@
             "/api/workorders/summary"
           ],
           "buildPath": "/_build",
+          "healthDetailPath": null,
           "links": {
             "frontDoor": "https://portal.azure.com/#@00000000-0000-0000-0000-000000000000/resource/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-cmdemo2-edge/providers/Microsoft.Cdn/profiles/afd-cmdemo2/overview",
             "logs": "https://portal.azure.com/#@00000000-0000-0000-0000-000000000000/blade/Microsoft_Azure_Monitoring_Logs/LogsBlade/resourceId/%2Fsubscriptions%2F00000000-0000-0000-0000-000000000000%2FresourceGroups%2Frg-cmdemo2-nonprod%2Fproviders%2Fmicrosoft.insights%2Fcomponents%2Fappi-cmdemo2-tdd/source/LogsBlade.AnalyticsShareLinkToQuery/q/H4sIAAAAAAAAA03OPWrEMBQE4N6nGLaSQCl2wcUWPkCKpMgFglYaE4F%2BnPcklgQffjEkIe0w3zDCz0HtOu24f1CIkNuI728t89UXYllwCiWytMvTSKdph45SvKRvQn4sFoQ2ajfWYfUpM%2F4maTU6QqDqMbT6rLQO23V%2BOZC0UaPZKIG1p0wTh%2FieWnW4ztbhbHH7wi1V01Ohdl82h7lY9%2B%2Fkc9Xua%2BC0o0mkHOKvjUgNDxt%2FX%2FTiAAAA/timespan/PT1H"
@@ -80,6 +81,7 @@
             "/api/workorders/summary"
           ],
           "buildPath": "/_build",
+          "healthDetailPath": null,
           "links": {
             "frontDoor": "https://portal.azure.com/#@00000000-0000-0000-0000-000000000000/resource/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-cmdemo2-edge/providers/Microsoft.Cdn/profiles/afd-cmdemo2/overview",
             "logs": "https://portal.azure.com/#@00000000-0000-0000-0000-000000000000/blade/Microsoft_Azure_Monitoring_Logs/LogsBlade/resourceId/%2Fsubscriptions%2F00000000-0000-0000-0000-000000000000%2FresourceGroups%2Frg-cmdemo2-nonprod%2Fproviders%2Fmicrosoft.insights%2Fcomponents%2Fappi-cmdemo2-uat/source/LogsBlade.AnalyticsShareLinkToQuery/q/H4sIAAAAAAAAA03OPWrEMBQE4N6nGLaSQCl2wcUWPkCKpMgFglYaE4F%2BnPcklgQffjEkIe0w3zDCz0HtOu24f1CIkNuI728t89UXYllwCiWytMvTSKdph45SvKRvQn4sFoQ2ajfWYfUpM%2F4maTU6QqDqMbT6rLQO23V%2BOZC0UaPZKIG1p0wTh%2FieWnW4ztbhbHH7wi1V01Ohdl82h7lY9%2B%2Fkc9Xua%2BC0o0mkHOKvjUgNDxt%2FX%2FTiAAAA/timespan/PT1H"

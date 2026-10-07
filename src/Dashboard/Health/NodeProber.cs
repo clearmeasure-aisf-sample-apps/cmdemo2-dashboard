@@ -105,6 +105,31 @@ public sealed class NodeProber(HttpClient http, TimeProvider time)
     }
 
     /// <summary>
+    /// The entries of a node's detailed health check (<see cref="HealthDetail"/>). A courtesy like the telemetry: no
+    /// answer, or anything but the expected JSON, is no entries. The body is read whatever the HTTP status: a health
+    /// check that fails answers 503 with the same JSON, and that answer is the one worth reading.
+    /// </summary>
+    public async Task<HealthDetail?> ReadHealthDetailAsync(Uri baseAddress, string detailPath, CancellationToken cancellationToken)
+    {
+        using var timeout = new CancellationTokenSource(Timeout, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        try
+        {
+            using var request = NewRequest(ProbeUrl.Combine(baseAddress, detailPath));
+            using var response = await http.SendAsync(request, linked.Token);
+            return HealthDetail.Parse(await response.Content.ReadAsStringAsync(linked.Token), time.GetUtcNow());
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// The build a node runs (<see cref="BuildInfo"/>), from its build endpoint. A courtesy like the telemetry: no
     /// answer, another status or anything but the expected JSON is no build facts.
     /// </summary>

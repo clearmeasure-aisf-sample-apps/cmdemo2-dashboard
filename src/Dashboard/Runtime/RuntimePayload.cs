@@ -64,7 +64,15 @@ public sealed record RuntimeTrend(IReadOnlyList<double> Points, string Title)
 /// <paramref name="Text"/>.
 /// </param>
 /// <param name="Trend">The sparkline after the words; null without one.</param>
-public sealed record RuntimeTileLine(string Text, string Tone = "plain", IReadOnlyList<RuntimeTextPart>? Parts = null, RuntimeTrend? Trend = null)
+/// <param name="Marks">
+/// Small marks before the words, one per entry of the node's detailed health check; null for a line without them.
+/// </param>
+public sealed record RuntimeTileLine(
+    string Text,
+    string Tone = "plain",
+    IReadOnlyList<RuntimeTextPart>? Parts = null,
+    RuntimeTrend? Trend = null,
+    IReadOnlyList<RuntimeCheckMark>? Marks = null)
 {
     /// <summary>A line of pieces: its text is the pieces in a row, and the pieces are kept only when one is a link.</summary>
     public static RuntimeTileLine Of(string tone, IReadOnlyList<RuntimeTextPart> parts, RuntimeTrend? trend = null)
@@ -73,6 +81,11 @@ public sealed record RuntimeTileLine(string Text, string Tone = "plain", IReadOn
         return new RuntimeTileLine(string.Concat(parts.Select(part => part.Text)), tone, parts.Any(part => part.Link is not null) ? parts : null, trend);
     }
 }
+
+/// <summary>One entry of a detailed health check as a small mark: its shape says the state, its title the rest.</summary>
+/// <param name="State"><c>healthy</c> (a check), <c>degraded</c> (a warning triangle), <c>failed</c> (a cross) or <c>unknown</c> (dots).</param>
+/// <param name="Title">The entry's name, its state in words, its description and how long it took.</param>
+public sealed record RuntimeCheckMark(string State, string Title);
 
 /// <param name="State"><c>serving</c>, <c>standby</c>, <c>down</c>, <c>checking</c> or <c>neutral</c>.</param>
 /// <param name="Label">The words of the region's mark.</param>

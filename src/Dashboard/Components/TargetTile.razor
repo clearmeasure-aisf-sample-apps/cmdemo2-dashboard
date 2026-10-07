@@ -158,6 +158,33 @@
         }
     }
 
+    @* What the web app's health check found, entry by entry (its detailed health check): one mark per entry, with
+       its name and its state as a shape and a word; the tooltip has the check's own words and how long it took. Only
+       with the probe Health check, and only for an app that answers it. *@
+    @if (Target.HealthDetail is { } checks)
+    {
+        <div class="tile__block">
+            <h5 class="tile__label" id="@($"{HeadingId}-checks")" title="The entries of the web app's detailed health check, read with every health check of this page">Health checks</h5>
+            <ul class="checks" aria-labelledby="@($"{HeadingId}-checks")">
+                @foreach (var entry in checks.Entries)
+                {
+                    <li class="check check--@entry.State.ToString().ToLowerInvariant()" title="@HealthDetailText.Title(entry)">
+                        <StateIcon State="HealthDetailText.Icon(entry.State)" />
+                        <span class="check__name">@entry.Name</span>
+                        <span class="@(entry.IsHealthy ? "visually-hidden" : "check__state")">@HealthDetailText.Label(entry.State)</span>
+                    </li>
+                }
+            </ul>
+            @if (Target.State is HealthState.Unhealthy or HealthState.Unreachable && HealthDetailText.Failed(checks) is { } failed)
+            {
+                <p class="tile__detail tile__detail--failed">
+                    <StateIcon State="HealthState.Unhealthy" />
+                    <span>@failed</span>
+                </p>
+            }
+        </div>
+    }
+
     @if (Target.Last?.Detail is { } detail)
     {
         <p class="tile__detail">@detail</p>

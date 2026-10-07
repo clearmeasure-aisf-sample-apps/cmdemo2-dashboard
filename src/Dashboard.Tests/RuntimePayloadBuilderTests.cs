@@ -306,7 +306,7 @@ public class RuntimePayloadBuilderTests
         var origin = payload.Edges.Single(edge => edge.Id == "fd_ui-to-app_ui_standby");
         Assert.Equal((RuntimePayloadBuilder.NoNumber, "calls/min", "when priority 1 is down"), (origin.Number, origin.Unit, origin.Text));
         Assert.Equal("first, while healthy", payload.Edges.Single(edge => edge.Id == "fd_ui-to-app_ui_primary").Text);
-        Assert.Equal("queries of the app", payload.Edges.Single(edge => edge.Id == "app_ui_primary-to-sqldb").Text);
+        Assert.Equal("app queries", payload.Edges.Single(edge => edge.Id == "app_ui_primary-to-sqldb").Text);
         Assert.Equal((RuntimePayloadBuilder.NoNumber, null), (payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Number, payload.Edges.Single(edge => edge.Id == "browser-to-fd_ui").Text));
     }
 
