@@ -1,7 +1,17 @@
 namespace Dashboard.Health;
 
 /// <summary>The system the dashboard shows: the content of <c>topology.json</c>.</summary>
-public sealed record Topology(SystemInfo System, DateTimeOffset? Generated, IReadOnlyList<EnvironmentInfo> Environments);
+/// <param name="Cluster">
+/// The Kubernetes cluster the system runs in, for the cluster view; null for a system without one, which is then shown
+/// without that view.
+/// </param>
+public sealed record Topology(SystemInfo System, DateTimeOffset? Generated, IReadOnlyList<EnvironmentInfo> Environments, ClusterInfo? Cluster = null)
+{
+    /// <summary>
+    /// True when a deployable of any environment has a Front Door endpoint: the page's help then speaks of Front Door.
+    /// </summary>
+    public bool HasFrontDoor => Environments.Any(environment => environment.Deployables.Any(deployable => deployable.FrontDoor is not null));
+}
 
 /// <param name="Slug">The system's short name.</param>
 /// <param name="Name">The name the header shows.</param>
@@ -17,13 +27,34 @@ public sealed record SystemInfo(string Slug, string Name, Uri? Repository = null
 /// </param>
 /// <param name="VersionsHistoryUrl">The page with the history of that file.</param>
 /// <param name="Links">Where the environment's resources are (<see cref="LinkSet"/>); null without links.</param>
+/// <param name="Namespace">
+/// The namespace of the cluster that holds the environment's pods: the cluster view lists its pods under the
+/// environment. Null where the system runs in no cluster.
+/// </param>
 public sealed record EnvironmentInfo(
     string Name,
     string? Tier,
     IReadOnlyList<DeployableInfo> Deployables,
     Uri? VersionsUrl = null,
     Uri? VersionsHistoryUrl = null,
-    LinkSet? Links = null);
+    LinkSet? Links = null,
+    string? Namespace = null);
+
+/// <summary>
+/// The Kubernetes cluster of the system (<c>cluster</c> of <c>topology.json</c>): the two public files the cluster
+/// view reads, and where the cluster is in the Azure portal. Every part is optional.
+/// </summary>
+/// <param name="Name">The cluster's name; null when the topology does not say.</param>
+/// <param name="StatusUrl">
+/// Where the browser reads the live status a collector inside the cluster writes (<c>cluster.json</c>): nodes,
+/// namespaces, pods and volumes.
+/// </param>
+/// <param name="ServiceUrl">
+/// Where the browser reads Azure's own facts about the AKS service (<c>aks.json</c>), which a scheduled workflow
+/// publishes.
+/// </param>
+/// <param name="Links">Where the cluster is in the Azure portal (<see cref="LinkSet"/>); null without links.</param>
+public sealed record ClusterInfo(string? Name, Uri? StatusUrl = null, Uri? ServiceUrl = null, LinkSet? Links = null);
 
 /// <summary>
 /// One deployable of an environment: its public address (Front Door), the nodes behind it and the page of the project
@@ -38,6 +69,11 @@ public sealed record EnvironmentInfo(
 /// has no such endpoint.
 /// </param>
 /// <param name="Links">Where the deployable's resources are (<see cref="LinkSet"/>); null without links.</param>
+/// <param name="PinUrl">
+/// Where the browser reads the deployable's own pin: a Kustomize file whose first <c>newTag</c> is the version pinned
+/// in Git. Null when the environment's <c>versions.json</c> holds the pin.
+/// </param>
+/// <param name="PinHistoryUrl">The page with the history of that file; null for the history of <c>versions.json</c>.</param>
 public sealed record DeployableInfo(
     string Name,
     Uri? FrontDoor,
@@ -49,11 +85,16 @@ public sealed record DeployableInfo(
     string? TelemetryPath = null,
     IReadOnlyList<string>? TrafficPaths = null,
     string? BuildPath = null,
-    LinkSet? Links = null)
+    LinkSet? Links = null,
+    Uri? PinUrl = null,
+    Uri? PinHistoryUrl = null)
 {
     public const string DefaultHealthPath = "/_healthcheck";
     public const string DefaultAlivePath = "/alive";
     public const string DefaultVersionPath = "/_version";
+
+    /// <summary>The name of the file that holds the deployable's pin: its kustomization's, or <c>versions.json</c>.</summary>
+    public string PinFile => PinUrl is null ? PinnedVersions.FileName : PinnedVersions.FileOf(PinUrl);
 
     /// <summary>The path the chosen probe calls on every node of this deployable.</summary>
     public string PathFor(ProbeKind probe) => probe == ProbeKind.Liveness ? AlivePath : HealthPath;

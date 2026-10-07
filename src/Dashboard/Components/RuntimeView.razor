@@ -31,8 +31,7 @@
     {
         <p class="empty runtime__absent" role="status">
             The runtime diagram is not available for this deployment: the site has no <code>runtime/</code> folder. The
-            deployment of a newer dashboard release renders it (<code>deploy-staticwebapp.ps1</code>). The Health view
-            shows every node.
+            deployment of a newer dashboard release renders it. The Health view shows every node.
         </p>
     }
     else if (_index.Index is not { } loaded)
@@ -54,12 +53,29 @@
     else
     {
         <p class="help runtime__help">
-            Live, from the checks of this page: the state of every web app and Front Door endpoint, which region serves
-            traffic, the route Front Door takes and the versions next to the pinned ones. Drawn when the dashboard was
-            deployed: the resources, their names, sizes and regions. The database takes no call from the browser: it is
-            reachable when the health check of a web app that uses it passes. Calls per minute are the last minute as each
-            web app counts it (its <code>/_telemetry</code>): requests Front Door forwarded, Front Door's health probes and
-            SQL commands; a dash where a web app reports none. "Generate traffic" at the bottom of the page makes them move.
+            @* Front Door, its route and the regions are named only where the topology has a Front Door somewhere. *@
+            @if (Monitor.Topology.HasFrontDoor)
+            {
+                <text>
+                    Live, from the checks of this page: the state of every web app and Front Door endpoint, which region serves
+                    traffic, the route Front Door takes and the versions next to the pinned ones. Drawn when the dashboard was
+                    deployed: the resources, their names, sizes and regions. The database takes no call from the browser: it is
+                    reachable when the health check of a web app that uses it passes. Calls per minute are the last minute as each
+                    web app counts it (its <code>/_telemetry</code>): requests Front Door forwarded, Front Door's health probes and
+                    SQL commands; a dash where a web app reports none.
+                </text>
+            }
+            else
+            {
+                <text>
+                    Live, from the checks of this page: the state of every web app, whether it serves traffic and the versions
+                    next to the pinned ones. Drawn when the dashboard was deployed: the resources, their names and sizes. The
+                    database takes no call from the browser: it is reachable when the health check of a web app that uses it
+                    passes. Calls per minute are the last minute as each web app counts it (its <code>/_telemetry</code>):
+                    requests and SQL commands; a dash where a web app reports none.
+                </text>
+            }
+            "Generate traffic" at the bottom of the page makes them move.
             The small line next to a number is its trend over the last checks of this page. An underlined number or name
             is a link: it opens the Azure portal or Octopus Deploy in a new tab, which ask you to sign in.
         </p>

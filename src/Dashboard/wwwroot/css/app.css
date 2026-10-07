@@ -1271,6 +1271,539 @@ main {
 .runtime-legend .rt-frame { stroke-width: 1.5px !important; }
 .runtime-legend .rt-edge-line { stroke: #78909c; }
 
+/* ---------- Cluster view ---------- */
+
+.cluster {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+/* What Azure reports next to what the cluster reports: side by side where there is room, so they can be compared. */
+.cluster__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  align-items: start;
+  gap: var(--gap);
+}
+
+.cluster-card {
+  gap: 0.7rem;
+  border-top: 4px solid var(--pending);
+}
+
+.cluster-card--healthy {
+  border-top-color: var(--good);
+}
+
+.cluster-card--warning,
+.cluster-card--unhealthy {
+  border-top-color: var(--serious);
+}
+
+.cluster-card--unreachable {
+  border-top-color: var(--critical);
+}
+
+.cluster-card__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+}
+
+.cluster-card__headline {
+  font-size: 1rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.cluster-card__detail {
+  margin-top: -0.35rem;
+  color: var(--ink-secondary);
+}
+
+.cluster-card__totals {
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+}
+
+.cluster-card__totals dd {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A number with a second, smaller one ("66 of 68", "1 finished"): each stays whole, and the second wraps under the first. */
+.cluster-card__totals dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.45em;
+  white-space: nowrap;
+}
+
+.cluster-card__totals .unit {
+  margin-left: 0;
+}
+
+.cluster-card__block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--hairline);
+}
+
+/* A muted note: the facts are old. Words and a rule at its side, no state colour: it is not a failure of the cluster. */
+.cluster-card__note {
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--pending);
+  color: var(--ink-secondary);
+  font-size: 0.85rem;
+}
+
+.cluster-card__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 1rem;
+  margin-top: auto;
+  color: var(--ink-secondary);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cluster-card__link {
+  margin-left: auto;
+}
+
+.cluster-card__link::after {
+  content: " \2197\FE0E";
+}
+
+/* The states the cluster view adds to the page's badge: a warning is the triangle in a frame, without the wash of
+   Unhealthy; checking and neutral keep the page's ground. */
+.state--warning {
+  box-shadow: inset 0 0 0 1px var(--serious);
+}
+
+/* In a table's row: the icon and the word, without the pill. */
+.state--quiet {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  align-items: flex-start;
+  font-size: inherit;
+  font-weight: 600;
+  white-space: normal;
+}
+
+.state--quiet .state-icon {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin-top: 0.2rem;
+}
+
+.state-icon--neutral {
+  fill: none;
+}
+
+.state-icon--neutral .state-icon__ring {
+  stroke: var(--pending);
+  stroke-width: 1.5;
+}
+
+.state-icon--neutral .state-icon__mark {
+  stroke: var(--pending);
+  stroke-width: 2;
+}
+
+.pools {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.pools li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.5rem;
+}
+
+.pools__state {
+  color: var(--ink-secondary);
+}
+
+/* A meter: a share of a whole. The fill is ink, not a state colour: how much, not how good. From nine tenths on it
+   is marked with the warning colour, and the number next to it with the warning shape and its weight. */
+.meter {
+  display: block;
+  width: 100%;
+  height: 0.5rem;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--hairline);
+}
+
+.meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--ink-secondary);
+}
+
+.meter--thin {
+  height: 0.25rem;
+}
+
+.meter--thin .meter__fill {
+  background: var(--pending);
+}
+
+.meter--high {
+  background: var(--serious-wash);
+}
+
+.meter--high .meter__fill {
+  background: var(--serious);
+}
+
+.uses {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0.8rem 1.5rem;
+}
+
+/* Azure's five small numbers: the three of the nodes in one row, the two of the API server under them. */
+.uses--small {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem 1rem;
+}
+
+.uses--small .use__value {
+  font-size: 0.94rem;
+}
+
+.use {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.use__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.1rem 0.5rem;
+}
+
+.use__label {
+  flex: 1 0 100%;
+  color: var(--ink-secondary);
+  font-size: 0.76rem;
+}
+
+.use__value {
+  font-size: 1.02rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.use__value .state-icon,
+.use-cell .state-icon,
+.chip .state-icon,
+.platform__warn .state-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  vertical-align: -0.08em;
+}
+
+.use__value .state-icon,
+.use-cell .state-icon,
+.platform__warn .state-icon {
+  margin-right: 0.25rem;
+}
+
+.use--high .use__value,
+.use-cell--high .use-cell__value {
+  font-weight: 700;
+}
+
+.use__percent {
+  color: var(--ink-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.use__head .trend {
+  align-self: center;
+  margin-left: auto;
+}
+
+.use__sub {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--ink-secondary);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.use__sub span:last-child {
+  flex: none;
+}
+
+.cluster-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cluster-section__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 1rem;
+}
+
+/* A table of the cluster view: it scrolls sideways inside its own frame where the screen is narrow. */
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.grid th,
+.grid td {
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.grid thead th {
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.grid tbody th {
+  font-weight: 400;
+}
+
+.grid tbody tr + tr > * {
+  border-top: 1px solid var(--hairline);
+}
+
+.grid td {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.grid .grid__number {
+  text-align: right;
+}
+
+.grid__name {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.grid__warn {
+  font-weight: 700;
+}
+
+.grid__minor {
+  color: var(--ink-secondary);
+}
+
+.grid__chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.5rem;
+}
+
+/* The pods of a namespace: the same columns in every namespace's table, so a page of them reads as one list. The table
+   keeps a width its columns need and scrolls inside its frame below it. */
+.grid--pods {
+  min-width: 62rem;
+  table-layout: fixed;
+}
+
+.grid--pods thead th:nth-child(1) { width: 25%; }
+.grid--pods thead th:nth-child(2) { width: 11%; }
+.grid--pods thead th:nth-child(3) { width: 18%; }
+.grid--pods thead th:nth-child(4) { width: 8%; }
+.grid--pods thead th:nth-child(5) { width: 15%; }
+.grid--pods thead th:nth-child(6) { width: 15%; }
+.grid--pods thead th:nth-child(7) { width: 8%; }
+
+.grid--pods td:nth-child(3) {
+  white-space: normal;
+}
+
+.grid--pods .pod__name {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* On a narrow screen the kind moves under the pod's name, so the state is in view before the table is scrolled. */
+.pod__kind {
+  display: none;
+  color: var(--ink-secondary);
+  font-size: 0.76rem;
+}
+
+@media (max-width: 40rem) {
+  .grid--pods {
+    min-width: 50rem;
+  }
+
+  .grid--pods thead th:nth-child(2),
+  .grid--pods tbody td:nth-child(2) {
+    display: none;
+  }
+
+  .grid--pods thead th:nth-child(1) { width: 22%; }
+  .grid--pods thead th:nth-child(3) { width: 22%; }
+  .grid--pods thead th:nth-child(4) { width: 10%; }
+  .grid--pods thead th:nth-child(5) { width: 18%; }
+  .grid--pods thead th:nth-child(6) { width: 18%; }
+  .grid--pods thead th:nth-child(7) { width: 10%; }
+
+  .pod__kind {
+    display: block;
+  }
+}
+
+/* A finished job: there, and no concern. Muted, and its state says "Finished". */
+.grid__row--muted > * {
+  color: var(--ink-secondary);
+}
+
+.grid__row--muted .pod__workload {
+  font-weight: 500;
+}
+
+.pod {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.pod__workload {
+  font-weight: 650;
+}
+
+.pod__name {
+  color: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.use-cell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 6.5rem;
+}
+
+.use-cell__none {
+  color: var(--ink-secondary);
+}
+
+.chip--warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border-color: var(--serious);
+  background: var(--serious-wash);
+  color: var(--ink);
+}
+
+.namespace {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.namespace__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.6rem;
+}
+
+.namespace__name {
+  color: var(--ink-secondary);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.namespace__summary,
+.namespace__volumes {
+  color: var(--ink-secondary);
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.namespace__label {
+  margin-right: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.namespace__platform-name {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+/* Every namespace that belongs to no environment: one line, opened by the viewer or by an unhealthy pod. */
+.platform {
+  display: flex;
+  flex-direction: column;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--hairline);
+}
+
+.platform[open] {
+  gap: 0.9rem;
+}
+
+.platform > * + * {
+  margin-top: 0.9rem;
+}
+
+.platform__summary {
+  cursor: pointer;
+}
+
+.platform__summary h4 {
+  display: inline;
+}
+
+.platform__warn {
+  margin-left: 0.6rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* ---------- Messages ---------- */
 
 .empty {
@@ -1505,5 +2038,15 @@ main {
 
   .trend__line {
     stroke: CanvasText;
+  }
+
+  .table-scroll,
+  .meter,
+  .state--warning {
+    border: 1px solid CanvasText;
+  }
+
+  .meter__fill {
+    background: CanvasText;
   }
 }

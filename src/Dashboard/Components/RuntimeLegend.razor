@@ -60,9 +60,11 @@
 
     private static readonly (string State, string Text)[] Regions =
     [
-        ("serving", "Region serving traffic"),
-        ("standby", "Region on standby: healthy, no traffic"),
-        ("down", "Region not serving: its web app is not healthy"),
+        // "Frame", not "region": what the frame holds is a region on App Service and a namespace in a cluster, and the
+        // diagram names it in the frame's own title.
+        ("serving", "Frame of a region or namespace that serves traffic"),
+        ("standby", "On standby: healthy, no traffic"),
+        ("down", "Not serving: its web app is not healthy"),
     ];
 
     private static readonly (string State, string Text)[] Edges =

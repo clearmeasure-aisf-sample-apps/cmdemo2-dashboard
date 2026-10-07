@@ -1,4 +1,5 @@
-// The view in the address: #runtime or #runtime/<environment> opens the runtime view, anything else the health view.
+// The view in the address: #runtime or #runtime/<environment> opens the runtime view, #cluster the cluster view (where
+// the topology has a cluster), anything else the health view.
 // The page replaces the hash as the viewer switches (no history entry per click) and follows a hash typed or linked.
 let listener = null;
 

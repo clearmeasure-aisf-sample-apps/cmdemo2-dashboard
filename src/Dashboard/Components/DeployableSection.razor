@@ -4,7 +4,8 @@
     var disagrees = assessment.FrontDoor == FrontDoorAgreement.Disagrees;
     var versions = Environment.AssessVersions(Deployable);
     var logs = Deployable.Info.Links?[LinkSet.Logs];
-    var hasVersionLine = versions is not null || Deployable.Info.ProjectUrl is not null || Environment.Info.VersionsHistoryUrl is not null || logs is not null;
+    var history = Environment.PinHistoryOf(Deployable);
+    var hasVersionLine = versions is not null || Deployable.Info.ProjectUrl is not null || history is not null || logs is not null;
 }
 <section class="deployable" aria-labelledby="@($"{IdPrefix}-title")">
     <header class="deployable__header">
@@ -49,14 +50,18 @@
             @if (hasVersionLine)
             {
                 <VersionLine Assessment="versions" DeployableName="@Deployable.Info.Name" EnvironmentName="@Environment.Name"
-                             ProjectUrl="Deployable.Info.ProjectUrl" HistoryUrl="Environment.Info.VersionsHistoryUrl" LogsUrl="logs" />
+                             ProjectUrl="Deployable.Info.ProjectUrl" HistoryUrl="history" LogsUrl="logs"
+                             PinFile="@Deployable.Info.PinFile" HistoryIsOwn="Deployable.Info.PinHistoryUrl is not null" />
             }
         </div>
     </header>
 
     @if (!Deployable.Targets.Any())
     {
-        <p class="empty">This deployable has neither a Front Door endpoint nor a node in the topology.</p>
+        @* Front Door is named only where the topology has one somewhere: a system without it has nodes only. *@
+        <p class="empty">@(Monitor.Topology.HasFrontDoor
+            ? "This deployable has neither a Front Door endpoint nor a node in the topology."
+            : "This deployable has no node in the topology.")</p>
     }
     else
     {

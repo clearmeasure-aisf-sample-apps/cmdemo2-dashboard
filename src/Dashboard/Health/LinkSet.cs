@@ -7,8 +7,11 @@ namespace Dashboard.Health;
 /// </summary>
 public sealed class LinkSet
 {
-    /// <summary>A node: the web app in the Azure portal.</summary>
+    /// <summary>A node: the web app in the Azure portal. The cluster: the AKS cluster in the Azure portal.</summary>
     public const string Portal = "portal";
+
+    /// <summary>The cluster: its workloads in the Azure portal.</summary>
+    public const string Workloads = "workloads";
 
     /// <summary>A node: Live Metrics of the environment's Application Insights.</summary>
     public const string LiveMetrics = "liveMetrics";

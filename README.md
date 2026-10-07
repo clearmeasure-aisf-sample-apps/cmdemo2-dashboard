@@ -10,6 +10,10 @@ address keeps the choice: `#runtime` opens the runtime view, `#runtime/uat` the 
 The header's controls (pause, interval, probe, check now) and its summary apply to both views: one set of checks, two
 renderings.
 
+A system that runs in a Kubernetes cluster has a third view, **Cluster** (`#cluster`): the AKS service as Azure
+reports it next to the cluster's own nodes, namespaces and pods (see "The cluster view"). The tab is there only when
+`topology.json` has `cluster`; without it the page is as it was: no tab, no request, no word about a cluster.
+
 For each environment (tdd, uat, prod) and each deployable in it, the health view shows:
 
 - one tile for the Azure Front Door endpoint (the public address) and one tile per regional node (web app), with its
@@ -20,8 +24,8 @@ For each environment (tdd, uat, prod) and each deployable in it, the health view
 - per deployable, a "Code" card (the build its primary node runs: commit, lines of code by language, tests, coverage,
   complexity, CRAP, Qodana) and a "Delivery" card (deployed when, signed off by whom, lead time, how far behind the
   first environment), each only when its source answers;
-- under both views, "What just happened": the last 50 events this page observed (state changes, restarts,
-  deployments, failovers, pins, traffic);
+- under every view, "What just happened": the last 50 events this page observed (state changes, restarts,
+  deployments, failovers, pins, traffic, and for a system with a cluster what changed in it);
 - where the topology has a link for it, every number and name leads to its place in the Azure portal or in Octopus
   Deploy;
 - which region is expected to serve the traffic, a "Failed over to <region>" banner when the primary is not healthy
@@ -51,7 +55,10 @@ Then open http://localhost:5210 (http://localhost:5210/#runtime for the runtime 
 `src/Dashboard/wwwroot/topology.json` and, rendered from it, a sample `src/Dashboard/wwwroot/runtime/` (tdd and uat);
 their hosts do not exist, so every tile and every web app of the diagram shows Unreachable and no pinned version is
 found. Point the sample at real nodes and at a real
-system repository to see them (and allow `http://localhost:5210` in the nodes' CORS settings, see below).
+system repository to see them (and allow `http://localhost:5210` in the nodes' CORS settings, see below). The sample
+names no cluster, so it has no Cluster tab: a topology takes absolute addresses only, and the sample would have none
+to give for the cluster's two files. To see the view, add a `cluster` to the sample with the addresses of a real
+cluster's files, or of two files a local server serves (the tests' copies are `src/Dashboard.Tests/Samples/`).
 
 ```
 dotnet build -c Release     # warnings are errors
@@ -107,13 +114,16 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 | `environments` | yes, an array | Error. |
 | `environments[].name` | yes | Error. |
 | `environments[].tier` | no | No tier label. |
-| `environments[].versionsUrl` | no, may be `null` | No pinned versions for this environment: nothing is read and nothing is compared. |
-| `environments[].versionsHistoryUrl` | no, may be `null` | No "Pin history" link. |
+| `environments[].versionsUrl` | no, may be `null` | No pinned versions for this environment: nothing is read and nothing is compared (but for a deployable with `pinUrl`). |
+| `environments[].versionsHistoryUrl` | no, may be `null` | No "Pin history" link (but for a deployable with `pinHistoryUrl`). |
 | `environments[].links` | no | No links to the environment's resources (see "Links"). Keys: `applicationInsights`, `applicationMap`, `database`, `resourceGroup`. |
+| `environments[].namespace` | no, may be `null` | The cluster view has no group for this environment: the pods of its namespace are listed with the platform's. |
 | `environments[].deployables` | no | The environment is shown without tiles. |
 | `deployables[].name` | no | `app`. It is also the deployable's key in `versions.json`. |
 | `deployables[].projectUrl` | no, may be `null` | No "Octopus project" link. |
-| `deployables[].frontDoor` | no, may be `null` | No Front Door tile. |
+| `deployables[].pinUrl` | no, may be `null` | The deployable's pinned version is its entry in the environment's `versions.json` (`versionsUrl`). With it, the pinned version is read from this address instead: a Kustomize file (see "Pinned versions"). |
+| `deployables[].pinHistoryUrl` | no, may be `null` | "Pin history" leads to `versionsHistoryUrl`, where the environment has one. |
+| `deployables[].frontDoor` | no, may be `null` | No Front Door tile, and no "Front Door" row on the nodes' tiles. With exactly one node, the deployable is shown as a single node that serves (see "How the states are decided"). |
 | `deployables[].healthPath` | no | `/_healthcheck`. |
 | `deployables[].alivePath` | no | `/alive`. |
 | `deployables[].versionPath` | no | `/_version`. |
@@ -127,13 +137,21 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 | `nodes[].region` | no | The tile is titled with the node's name. |
 | `nodes[].role` | no | `primary` for the first node of the deployable, `standby` for the others. |
 | `nodes[].links` | no | The node's numbers and its name are plain text. Keys: `portal`, `liveMetrics`, `performance`, `failures`, `dependencies`. |
+| `cluster` | no, may be `null`; an object | No cluster view: no tab, and nothing is read (see "The cluster view"). |
+| `cluster.name` | no | The view is titled "Cluster", and the links' titles do not name the cluster. |
+| `cluster.statusUrl` | no, may be `null` | No "Cluster" card, no nodes and no pods: the cluster's own status is not read. |
+| `cluster.serviceUrl` | no, may be `null` | No "AKS service" card: Azure's facts are not read, and an unreachable cluster is not compared with them. |
+| `cluster.links` | no | No link to the cluster in the Azure portal. Keys: `portal`, `workloads`. |
 
 An address that is present (`system.repository`, `system.deliveryUrl`, `versionsUrl`, `versionsHistoryUrl`,
-`projectUrl`, `frontDoor`, `nodes[].url`) must be an absolute http(s) address: anything else is an error. A topology
-without `repository`, `versionsUrl`, `versionsHistoryUrl` and `projectUrl` is shown as before these fields existed: no
-line about versions, no request to GitHub. A `links` object is more forgiving, because a link is a courtesy: an entry
-whose value is not an absolute http(s) address is left out (so is a `links` that is not an object), an unknown key is
-ignored, and the number it would have belonged to stays plain text.
+`projectUrl`, `pinUrl`, `pinHistoryUrl`, `frontDoor`, `nodes[].url`, `cluster.statusUrl`, `cluster.serviceUrl`) must be
+an absolute http(s) address: anything else is an error. A topology without `repository`, `versionsUrl`, `versionsHistoryUrl`, `projectUrl`, `pinUrl` and
+`pinHistoryUrl` is shown as before these fields existed: no line about versions, no request to GitHub. A `links`
+object is more forgiving, because a link is a courtesy: an entry whose value is not an absolute http(s) address is
+left out (so is a `links` that is not an object), an unknown key is ignored, and the number it would have belonged to
+stays plain text. The two links of `cluster.links` the page knows (`portal`, `workloads`) are held to the rule of the
+addresses instead: one that is present and not an absolute http(s) address is an error
+(`cluster.links.portal: not an absolute http or https address.`); any other key of `cluster.links` is ignored.
 
 Unknown fields are ignored. A file that is missing, is not JSON or breaks a rule above is not shown in part: the
 dashboard shows "The topology could not be read" with every reason and its place in the file (for example
@@ -192,6 +210,36 @@ The links open in a new tab: "Octopus project" (`projectUrl`: the releases and d
 "Pin history" (`versionsHistoryUrl`: one commit per pin, each naming the deployment). Octopus Deploy asks the viewer
 to sign in; the dashboard itself never calls Octopus Deploy.
 
+### A pin in a kustomization: `pinUrl`
+
+Where Argo CD deploys from Git (one Kubernetes cluster, every app one node), the version pinned in Git is not an
+entry of `versions.json`: it is the image tag in the deployable's Kustomize file, one file per deployable and
+environment, for example `gitops/environments/uat/ui/kustomization.yaml`:
+
+```yaml
+images:
+  - name: example.azurecr.io/cmdemo3/ui
+    newTag: "2.4.15"
+```
+
+A deployable with `pinUrl` reads its pinned version from that address instead of from `versionsUrl`: the value of the
+file's first `newTag:` entry, in double or single quotes or without, a trailing comment left out (the page reads the
+lines of a file in block style; it does not parse YAML). The line under the banner and its states are the same, with
+that file's name in the reason:
+
+| The address answers | Line |
+|---|---|
+| A file with a `newTag` | Pinned 2.4.15, compared with the nodes as above. |
+| HTTP 404 | No pinned version. |
+| A file without `newTag`, or with an empty one | Pinned version not known. The reason is shown ("kustomization.yaml could not be read: the file has no newTag entry."). |
+| No answer, or another HTTP status | Pinned version not known. The reason is shown. |
+
+The file is read by the rules of `versions.json` (a `GET` with `cache: no-store` and no header of its own, the same
+timeout, a failed reading replaces a good one), once per round of checks and per deployable. "Pin history" leads to
+`pinHistoryUrl` when the deployable has one, otherwise to `versionsHistoryUrl`. A deployable without `pinUrl` is read
+from `versions.json` as before, also next to one with it; what `versions.json` says about a deployable with `pinUrl` is
+not its pin and is ignored.
+
 ## The runtime view
 
 The runtime view shows one environment as a C4 deployment diagram: the Azure subscription, the resource groups (the
@@ -211,12 +259,12 @@ diagram in place:
 
 | Element | What it shows |
 |---|---|
-| Web app, Front Door endpoint | The box's colour and border by state (Healthy, Unhealthy, Unreachable, Checking), and a tile: the state's badge with its word, HTTP status and latency, the version, the last 30 checks. A web app also shows its version next to the pinned one ("pinned 2.4.21: in sync", "differs from pinned 2.4.21"), its own numbers where it reports them ("12 req/min · p95 85 ms" with the trend of the requests, "0 errors · 0 exceptions/min", "CPU 3.2 % · 412 MB · 2 in flight" with the trend of the CPU, "up 2 h" or "restarted 3 min ago") and its role ("primary: serves traffic", "standby: ready, no traffic"); the endpoint shows where it routes ("routes to eastus2 (failed over)") and whether it agrees with the web apps. |
+| Web app, Front Door endpoint | The box's colour and border by state (Healthy, Unhealthy, Unreachable, Checking), and a tile: the state's badge with its word, HTTP status and latency, the version, the last 30 checks. A web app also shows its version next to the pinned one ("pinned 2.4.21: in sync", "differs from pinned 2.4.21"), its own numbers where it reports them ("12 req/min · p95 85 ms" with the trend of the requests, "0 errors · 0 exceptions/min", "CPU 3.2 % · 412 MB · 2 in flight" with the trend of the CPU, "up 2 h" or "restarted 3 min ago") and its role ("primary: serves traffic", "standby: ready, no traffic"; the only node of a deployable without a Front Door endpoint has no role: "serves traffic", "not serving"); the endpoint shows where it routes ("routes to eastus2 (failed over)") and whether it agrees with the web apps. |
 | Region of web apps | A mark with words: "serving traffic" (green frame), "standby: ready", "not serving" (red frame), by the same serving decision as the health view's banner. |
 | Front Door to an origin | Solid and green while it carries the traffic, dotted grey while idle, dashed red when the origin is not healthy: a failover is the green line moving from priority 1 to priority 2. |
 | Web app to the database | Green from the web app that serves, dotted from the others. |
 | Number line of a relationship | Calls per minute of the last minute, in a solid frame, as the web apps count them: browser to Front Door (the sum of its origins' requests from Front Door), Front Door to an origin (its requests from Front Door; Front Door's health probes next to the role), web app to database (the SQL commands of its requests, with the background ones next to the role, "queries of the app · 55 background"; all SQL commands for an app that does not tell them apart). Next to the number, its trend over the last checks of this page. A dashed frame with "–" where no web app reports a number (no `telemetryPath`, or an app without the endpoint). |
-| Database | The browser cannot ask Azure SQL, but a web app's health check connects to it: "Reachable" (healthy) when the health check of a web app that uses it passes, with the queries per minute its web apps' traffic causes (the background ones are in the tooltip); "Not confirmed" (neutral) when none passes, since the web app may be the cause; "Not probed" (neutral) with the Liveness probe, which leaves the database alone. |
+| Database | The browser cannot ask the database, but a web app's health check connects to it: "Reachable" (healthy) when the health check of a web app that uses it passes, with the queries per minute its web apps' traffic causes (the background ones are in the tooltip); "Not confirmed" (neutral) when none passes, since the web app may be the cause; "Not probed" (neutral) with the Liveness probe, which leaves the database alone. |
 | Links | Where the topology has a link (see "Links"): a web app's badge (Live Metrics), its name (the web app in the portal), its version (the release in Octopus Deploy, or else the commit of its build), its requests (Performance) and its errors (Failures); the Front Door endpoint's and the database's name; the numbers on the arrows (Performance, the dependency calls, the requests in Logs). They are real `a` elements: underlined, in the order of the keyboard, each with a title that says where it goes. |
 | Static site | Neutral, "Not probed": the dashboard does not check itself. The static site that serves the page says "This page". |
 
@@ -342,6 +390,164 @@ and `nameLink` (the node's name, which PlantUML drew: the script wraps it), each
 words). The script draws a link as an `a` element (new tab, `rel="noopener"`, its own `title`) and gives the focus
 back to the link that had it when an update redraws the tile.
 
+## The cluster view
+
+For a system that runs in a Kubernetes cluster (runtime aks-argocd of the demo-environment kit: one AKS cluster for
+every environment), the topology names the cluster, and the page gets a third tab:
+
+```json
+"cluster": {
+  "name": "aks-cmdemo3",
+  "statusUrl": "https://cmdemo3-cluster.20-225-155-175.sslip.io/cluster.json",
+  "serviceUrl": "https://raw.githubusercontent.com/example-org/cmdemo3-system/cluster-status/aks.json",
+  "links": { "portal": "https://portal.azure.com/...", "workloads": "https://portal.azure.com/..." }
+}
+```
+
+and each environment the namespace that holds its pods, `"namespace": "cmdemo3-prod"`.
+
+The view has two sources, and it shows them next to each other because they can differ: Azure can report a service
+available whose pods do not answer, and a stopped cluster reports nothing at all.
+
+| Source | Written by | How fresh |
+|---|---|---|
+| `statusUrl`, **live** | A collector inside the cluster: its nodes, namespaces, pods and volume claims. | Every `intervalSeconds` (15 s). |
+| `serviceUrl`, **slow** | A scheduled workflow: what Azure itself says about the AKS service. | Several times an hour (a ten-minute schedule, which GitHub starts every 10 to 45 minutes), and GitHub serves a copy that may be five minutes older. |
+
+Both are read with every round of the page's checks (the interval of the header, and "Check now"): a `GET` with
+`cache: no-store`, no header of its own and the timeout of a node; there is no second timer. Both must allow every
+origin. A reading that fails replaces a good one, and the next round reads again. Nothing is kept beyond the page.
+
+### The live file: `cluster.json`
+
+```json
+{ "generated": "2026-10-06T20:15:30Z", "intervalSeconds": 15, "kubernetesVersion": "v1.33.3",
+  "nodes": [
+    { "name": "aks-system-12148983-vmss000000", "ready": true, "pressures": [], "unschedulable": false,
+      "pool": "system", "size": "Standard_D4as_v6", "zone": null, "kubeletVersion": "v1.33.3", "createdAt": "2026-10-03T14:02:11Z",
+      "cpu": { "usage": 812, "allocatable": 3860, "requests": 2450, "limits": 9100 },
+      "memory": { "usage": 9876543210, "allocatable": 13400000000, "requests": 6200000000, "limits": 11800000000 },
+      "pods": { "count": 63, "capacity": 110 } } ],
+  "namespaces": [
+    { "name": "cmdemo3-prod",
+      "pods": [
+        { "name": "ui-6d5f7c9b8-x2k4q", "workload": "ui", "kind": "Deployment", "node": "aks-system-12148983-vmss000000",
+          "phase": "Running", "ready": true, "containers": 1, "containersReady": 1, "restarts": 0, "reason": null,
+          "startedAt": "2026-10-06T19:28:40Z",
+          "cpu": { "usage": 14, "requests": 100, "limits": 500 },
+          "memory": { "usage": 271000000, "requests": 268435456, "limits": 536870912 } } ],
+      "volumes": [ { "name": "data-db-0", "capacity": 8589934592, "phase": "Bound" } ] } ] }
+```
+
+CPU is in millicores; memory and a volume's capacity are in bytes. `usage` may be `null` (no metrics yet, or a
+finished pod), and so may `limits` and `requests` (none set). `phase` is the pod phase of Kubernetes; `reason` is why
+a container that is not ready waits or ended, or the pod's own reason (`CrashLoopBackOff`, `ImagePullBackOff`,
+`Evicted`, `Completed`). `kind` is the kind of the workload that owns the pod. `pressures` lists the node conditions
+that are true among `MemoryPressure`, `DiskPressure`, `PIDPressure` and `NetworkUnavailable`.
+
+The file must be a JSON object with `nodes` or `namespaces`. Everything else is optional: a node, a namespace, a pod
+or a volume without a `name` is left out; a number that is absent is a dash; a `ready` that is absent is not ready;
+a `phase` that is absent is `Unknown`; unknown fields are ignored.
+
+### Azure's facts: `aks.json`
+
+```json
+{ "generated": "2026-10-06T20:10:04Z", "name": "aks-cmdemo3", "resourceGroup": "rg-cmdemo3-cluster", "location": "southcentralus",
+  "availability": { "state": "Available", "summary": "There are no known issues affecting this kubernetes cluster.", "reason": null, "occurredAt": "2026-10-03T14:05:00Z" },
+  "powerState": "Running", "provisioningState": "Succeeded", "kubernetesVersion": "1.33.3", "tier": "Free",
+  "pools": [ { "name": "system", "mode": "System", "count": 1, "size": "Standard_D4as_v6", "osDiskGb": 128,
+               "powerState": "Running", "provisioningState": "Succeeded", "kubernetesVersion": "1.33.3" } ],
+  "metrics": { "windowMinutes": 15, "nodeCpuPercent": 21.4, "nodeMemoryPercent": 63.0, "nodeDiskPercent": null,
+               "apiServerCpuPercent": 4.6, "apiServerMemoryPercent": 31.5 } }
+```
+
+`availability.state` is the verdict of Azure Resource Health: `Available`, `Unavailable`, `Degraded` or `Unknown`.
+`powerState` is `Running` or `Stopped`. Each number of `metrics` may be `null` or absent (Azure does not emit every
+metric for every cluster): its meter is then a dash, which is no problem. The file must be a JSON object that says
+something about the service (`availability`, `powerState` or `provisioningState`); everything else is optional.
+
+### What the view shows
+
+1. **AKS service** (Azure's facts): the verdict as the state with Azure's sentence, the power state, the provisioning
+   state, the Kubernetes version, the tier, the region and the node pools (name, mode, count × size, OS disk, state);
+   Azure Monitor's numbers as small meters (node CPU, memory and disk, API server CPU and memory) with the window they
+   are an average of; "as of 15:10:04 (5 min ago)" from `generated`, and a note when the facts are older than 90
+   minutes ("Azure's facts are 2 h old: the workflow that publishes them may not be running."). `links.portal` is
+   the link "AKS cluster in the Azure portal".
+2. **Cluster** (the live file): the state with what is wrong, then the sums: nodes ready, pods ready (finished jobs
+   are in neither number and counted on their own), the pods the nodes run of how many they can take, all restarts,
+   the Kubernetes version; CPU and memory used of what the nodes offer ("0.81 of 3.86 cores", "9.2 of 12.5 GiB") as a
+   meter each, with a thinner one for what the pods request ("63 % requested") and the trend of the value over the
+   last checks of this page (see "Trends": the last 60 readings, a check without a live status is a gap); "as of"
+   and the collector's interval.
+3. **Nodes**: one row per node: its name, Ready or NotReady, each pressure as a warning chip, "cordoned" when it is
+   unschedulable, the pool, the size, the zone where it has one, the kubelet's version, its age, and CPU, memory and
+   pods against what it offers.
+4. **Pods**, by namespace: first the namespaces of the topology's environments, in the topology's order ("tdd ·
+   namespace cmdemo3-tdd", with the tier), then every other namespace by name as **Platform**. Per namespace a
+   summary ("3 of 3 ready · 1 finished · 1 restart · CPU 53 m · memory 1.5 GiB"), a table (the workload's name with
+   the pod's under it, kind, state, restarts, CPU, memory, age; the pods that are not ready and not finished first,
+   the finished last and muted) and its volume claims in one line ("data-db-0 8 GiB, Bound"). CPU and memory are
+   measured against the pod's limit where it has one ("14 of 500 m" with a meter), the plain number otherwise, a
+   dash without a measurement. The platform is one line ("Platform: 9 namespaces, 54 of 54 pods ready") that opens,
+   and it is open by itself while one of its pods is unhealthy. `links.workloads` is the link "Workloads in the Azure
+   portal". An environment whose namespace the file does not list says so.
+
+CPU is shown in cores for the nodes and in millicores for a pod below one core ("14 m": a thousandth of a core);
+memory in KiB, MiB and GiB. A meter is ink, not a state colour: how much, not how good. From 90 % of its whole on it
+is marked: the warning colour, and the warning shape and bold words next to it. Ages ("3 d", "47 min") and the rules
+below are counted to the file's `generated`, not to the browser's clock.
+
+### How the cluster's states are decided
+
+The states are the page's (Healthy, Unhealthy, Unreachable, Checking, with their shapes), and two more: a warning
+(the triangle in a frame) and a neutral state (a bar: stopped, finished, not known). `ClusterAssessment` and
+`PodRules` decide them, in plain C#.
+
+**A pod.**
+
+| Pod | State |
+|---|---|
+| Phase `Succeeded` | Finished: a job that ran to its end. Not a problem, not counted, muted. |
+| Phase `Failed` | Unhealthy. |
+| Phase `Pending` | Starting; unhealthy when it has been pending for more than 5 minutes (by `startedAt`; starting when the file does not say since when). |
+| Phase `Running`, ready | Ready. |
+| Phase `Running`, not ready | Unhealthy; starting while it is younger than 2 minutes. |
+| Another phase | Ready when it says so, unhealthy otherwise. |
+
+**The cluster** (the live file).
+
+| The live file | State | Words |
+|---|---|---|
+| Not read yet | Checking | "Reading the cluster's status file" |
+| Read, fresh: every node ready under no pressure, every pod that is not finished ready | Healthy | "Every node is ready and under no pressure, and every pod is ready" |
+| Read, fresh: something is wrong | Unhealthy | What is wrong, most severe first (nodes that are not ready, nodes under pressure, failed pods, running pods that are not ready by their restarts, pods pending too long), three at most, then the count of the rest: "Node aks-…000000 is not ready; ui in cmdemo3-tdd: CrashLoopBackOff, 7 restarts; and 2 more". |
+| Read, fresh: nothing is wrong, and some pods are starting | Checking, "Starting" | "1 pod is starting: ui in cmdemo3-tdd" |
+| Read, stale: `generated` is older than four intervals of the collector, and a minute at least | Unreachable, "Stale" | "The collector in the cluster last wrote 15:15:30 (12 min ago)", and what Azure reports. The nodes and pods below are as of then. |
+| No answer, or HTTP 404, while Azure's facts say `powerState` `Stopped` | Neutral, "Stopped" | "The cluster is stopped", and that the pods and the pages served from inside the cluster do not run while it is. |
+| No answer, or another HTTP status | Unreachable | "The cluster's status file does not answer", the reason, and what Azure reports next to it: "Azure reports the AKS service Available and Running, as of 15:10:04 (5 min ago)." |
+| An answer that is not the file | Unhealthy, "Unreadable" | "The cluster's status file could not be read", and why ("The file is not valid JSON."). |
+
+A cordoned node is still a healthy one. A stale file is judged by the browser's clock against the cluster's: a
+browser whose clock is more than a minute ahead sees a fresh file as stale.
+
+**The AKS service** (Azure's facts), the first row that applies.
+
+| Azure's facts | State | Words |
+|---|---|---|
+| Not read yet | Checking | "Reading Azure's facts about the AKS service" |
+| HTTP 404 | Neutral, "Not published" | "Azure's facts about the AKS service are not published yet": the workflow has not run. It is no error of the page. |
+| No answer, or another HTTP status | Neutral, "Not known" | "Azure's facts about the AKS service could not be read", and why. |
+| An answer that is not the file | Warning, "Unreadable" | The same, and why. |
+| `powerState` `Stopped` | Neutral, "Stopped" | "The AKS service is stopped" |
+| `availability.state` `Unavailable` | Unhealthy | "Azure reports the AKS service unavailable" |
+| `Degraded` | Warning | "Azure reports the AKS service degraded" |
+| A `provisioningState` other than `Succeeded` | Warning, with the state as its word | "The provisioning state of the AKS service is Updating, not Succeeded" |
+| `Unknown`, or no verdict | Neutral, "Unknown" | "Azure Resource Health has no verdict on the AKS service at the moment" |
+| `Available` (and running, and succeeded) | Healthy, "Available" | "Azure reports the AKS service available and running" |
+
+Under the words stands Azure's own sentence (`availability.summary`).
+
 ## Links: where a number leads
 
 The deployment writes optional `links` maps into `topology.json`, and the page turns every number or name that has a
@@ -358,6 +564,8 @@ destination asks for a sign-in: the page holds no credential and calls none of t
 | `deployables[].links` | `frontDoor` | The Front Door profile in the Azure portal. | The Front Door endpoint's name. |
 | | `logs` | A Logs query: the requests of the app's role, by five minutes and instance. | "Requests in Logs" in the versions line; the number on the browser to Front Door arrow. |
 | `environments[].links` | `applicationInsights`, `applicationMap`, `database`, `resourceGroup` | The environment's Application Insights, its application map, its database, its resource group. | The links at the end of the environment's heading and under the runtime diagram; the database's name in the diagram. |
+| `cluster.links` | `portal` | The AKS cluster in the Azure portal. | "AKS cluster in the Azure portal" in the cluster view's "AKS service" card. |
+| | `workloads` | The cluster's workloads in the Azure portal. | "Workloads in the Azure portal" next to the cluster view's "Pods". |
 
 Two links need no entry, because the page builds them from what it reads: a web app's **version** leads to its
 release in Octopus Deploy (`projectUrl` + `/deployments/releases/<version>`), or else, when its build reports that
@@ -398,12 +606,19 @@ the deployable has failed over, and the banner says to which region and why. Whe
 serve. The Front Door endpoint agrees when it is healthy exactly when a node is; a disagreement is flagged (Front
 Door down although a node is healthy, or Front Door healthy although no node is).
 
+**A single node.** A deployable without a Front Door endpoint and with exactly one node (one app at one public
+address, as in a Kubernetes cluster) is shown as a single node that serves: nothing can take over from it, so the
+banner says "Serves traffic: <node>", "Not serving: <node>" or "Checking <node>", the runtime view's tile "serves
+traffic", "not serving" or "checking", and neither names a primary, a standby, a region or a failover. The states and
+their colours are the same. Where the topology has no Front Door endpoint at all, the page's help texts do not name
+Front Door either.
+
 **Summary.** Every tile counts as one node: the Front Door endpoints and the web apps. Unhealthy and Unreachable both
 count as not healthy.
 
-**Probe.** "Health check" calls `healthPath`: the full check also connects to the database, which keeps a serverless
-database awake. "Liveness" calls `alivePath`: it only asks whether the web app is running and leaves the database
-alone, so a serverless database can pause while the dashboard is open.
+**Probe.** "Health check" calls `healthPath`: the full check also connects to the database, which keeps a database
+that pauses when idle (a serverless one) awake. "Liveness" calls `alivePath`: it only asks whether the web app is
+running and leaves the database alone, so such a database can pause while the dashboard is open.
 
 **Polling.** A round of checks runs every interval (30 seconds unless changed). Polling stops while the dashboard is
 paused and while its browser tab is hidden (Page Visibility API), and a round runs at once when it resumes or the tab
@@ -426,6 +641,9 @@ header, so the tile shows Unreachable, not Unhealthy. The browser's console name
 The Front Door endpoint forwards the request to a node, and the node's CORS header comes back through it, so the same
 setting covers the Front Door tile.
 
+In a cluster the ingress can answer for the node: runtime aks-argocd of the demo-environment kit puts an Envoy Gateway
+`SecurityPolicy` (every origin, GET, no credentials) on each app's route while the system has a dashboard.
+
 ## The repository
 
 ```
@@ -435,12 +653,14 @@ global.json                  the SDK
 src/Dashboard                the Blazor WebAssembly app
   App.razor                  the page: header, view tabs, environments, footer, polling
   Components/                tile, history strip, trend line, state badge, deployable section, version line, code and
-                             delivery cards, events strip, links, runtime view, legend
+                             delivery cards, events strip, links, runtime view, legend, cluster view (its cards,
+                             tables, meter and badge)
   Health/                    the health logic, plain C# without a browser
   Runtime/                   the runtime view's files, payload and address, plain C# without a browser
+  Cluster/                   the cluster view's files, states, grouping and words, plain C# without a browser
   wwwroot/                   index.html, css/app.css, js/visibility.js, js/location.js, js/runtime.js, the sample
                              topology.json and runtime/
-src/Dashboard.Tests          xUnit tests of the health logic
+src/Dashboard.Tests          xUnit tests of the health logic; Samples/ holds a cluster.json and an aks.json
 .github/workflows            build.yml, release.yml, secret-scan.yml
 ```
 
@@ -452,7 +672,10 @@ reading the pinned versions (`PinnedVersions`, `PinnedVersionsReader`) and compa
 the trends (`Trend`, `Trends`), the events (`EventDetector`, `EventLog`), the build facts (`BuildInfo`, `BuildText`),
 the delivery facts (`DeliveryReport`, `DeliveryText`) and the links (`LinkSet`, `LinkText`). The runtime view's logic is in `src/Dashboard/Runtime`: reading `runtime/`
 (`RuntimeManifestParser`, `RuntimeLoader`), the update of the diagram (`RuntimePayloadBuilder`) and the view in the
-address (`ViewAddress`). `HttpClient` and `TimeProvider` are injected, so the tests run them with a stub handler and
+address (`ViewAddress`). The cluster view's logic is in `src/Dashboard/Cluster`: the two files (`ClusterStatus`,
+`AksService`) and their reading (`ClusterReader`, `ClusterMonitor`), the states (`PodRules`, `ClusterAssessment`), the
+grouping and the sums (`ClusterGroups`, `ClusterTotals`), the words and units (`ClusterText`) and the events
+(`ClusterEventDetector`). `HttpClient` and `TimeProvider` are injected, so the tests run them with a stub handler and
 fake time.
 
 There is no external dependency at run time: no CDN, no web font, no CSS framework. The style sheet is
@@ -473,6 +696,15 @@ The site is static and expects to be served from the root of its host (`<base hr
   repository variables `SYSTEM_SLUG`, `DEPLOYABLE_NAME`, `OCTOPUS_URL`, `OCTOPUS_SPACE_NAME` and
   `OCTOPUS_SERVICE_ACCOUNT_ID`.
 - **secret-scan** (`.github/workflows/secret-scan.yml`): gitleaks over the history of the commit every pull request and push checks out.
+
+For a system that serves the dashboard from its cluster (runtime aks-argocd), the release is an image instead:
+`.github/release-image.yml` of the template, which `add-demo-deployable.ps1` puts in place as
+`.github/workflows/release.yml`. It builds `Dockerfile` (the site behind nginx, without root, port 8080;
+`nginx.conf`), pushes `<ACR_LOGIN_SERVER>/<SYSTEM_SLUG>/<DEPLOYABLE_NAME>:<version>` as the registry's push identity
+(`AZURE_CLIENT_ID_ACR_PUSH`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `ACR_NAME`), locks the tag and creates the
+Octopus release. The image carries the sample `topology.json` and `runtime/` too, but nginx serves those two paths
+from `/content`, where the cluster mounts what the deployment committed for the environment (a ConfigMap with the
+flat keys `topology.json` and `runtime-<file>`).
 
 The version is `MAJOR_VERSION.MINOR_VERSION.<run number of the Build run>`; the two numbers are in `build.yml`. The
 build passes it as `-p:Version=...`, and the dashboard shows it in its footer. A local build shows `0.0.0-local`.
@@ -499,7 +731,8 @@ only):
 ```
 
 `requests` is traffic (not the checks); `probes.perMinute` the dashboards' and diagnostics' checks, `probes.frontDoor`
-Front Door's health probes. Every round reads it from each regional node next to the health check (never through Front
+Front Door's health probes. The health view's tile shows `requests.frontDoor` as "Front Door" only for a deployable
+with a Front Door endpoint. Every round reads it from each regional node next to the health check (never through Front
 Door, which would answer for one node only). An answer that is not this JSON is no numbers, not a failure.
 
 `sql.perMinute` is every SQL command the process ran. An app may tell them apart: `sql.requests` (run while handling
@@ -538,7 +771,7 @@ response stays opaque. While it runs, the page checks every 10 s.
 
 ## What just happened
 
-Above the traffic panel, in both views: the last 50 events this page observed since it was opened, newest first,
+Above the traffic panel, in every view: the last 50 events this page observed since it was opened, newest first,
 each with its time, its environment and node, and words. The page finds them itself, by comparing every check with
 the one before (`EventDetector`); nothing comes from a server's log, and a reload of the page starts an empty list
 (a reload of the topology keeps it).
@@ -549,8 +782,9 @@ the one before (`EventDetector`); nothing comes from a server's log, and a reloa
 | Restart | A web app's `uptimeSeconds` went down, or (without it) its `startedAt` is later. Compared with its last reading, also across checks it did not answer. | "ui restarted, up 12 s" |
 | Deployment | A web app reports another version. Not for a Front Door endpoint, which answers for whichever node served. | "ui: 2.4.14 → 2.4.15, deployed" |
 | Serving region | At the end of a round, the node expected to serve changed: a failover, a failback, nothing serves, serves again. | "Failover: westus3 → eastus2. Primary westus3 is unreachable; eastus2 is expected to serve traffic." |
-| Pin | The version pinned in Git changed between two readings of `versions.json`. | "ui: pinned 2.4.14 → 2.4.15 in Git" |
+| Pin | The version pinned in Git changed between two readings of `versions.json`, or of the deployable's own file (`pinUrl`). | "ui: pinned 2.4.14 → 2.4.15 in Git" |
 | Traffic | The traffic button was started, stopped or ran out. | "Traffic started: 2 requests a second for 60 s to ui at cmdemo2-uat-def456.z01.azurefd.net" |
+| Cluster | Only with `cluster` in the topology, between two readings of its files and never at the first: the status file stopped answering or answers again; the collector stopped writing (the file became stale) or writes again; a node is no longer ready or is ready again; per pod one event a round at most: its restart count rose, or else it became unhealthy, or else it is ready again; Azure's verdict on the AKS service or its power state changed. A round names ten pods and counts the rest. | "ui in cmdemo3-tdd restarted (7 restarts): CrashLoopBackOff", "Node aks-…000000 is not ready", "The cluster's status file stopped answering: no answer within 10 s", "Azure's verdict on the AKS service: Available → Degraded" |
 
 The list is a `role="log"` region: additions are announced politely, and it scrolls inside its own frame. An event's
 level has a shape (check, warning triangle, cross, dots) next to its words.

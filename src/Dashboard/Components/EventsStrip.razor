@@ -6,7 +6,8 @@
         <p class="events__scope">
             Observed by this page since it was opened at
             <time datetime="@TimeText.Iso(Opened)">@TimeText.Clock(Opened, Zone)</time>: state changes, restarts,
-            deployments, failovers, pins and traffic. The last @EventLog.DefaultCapacity are kept.
+            deployments, failovers, pins@(Monitor.Cluster is null ? " and traffic" : ", traffic and what changed in the cluster").
+            The last @EventLog.DefaultCapacity are kept.
         </p>
     </header>
     @if (Monitor.Delivery?.Failover is { } failover)

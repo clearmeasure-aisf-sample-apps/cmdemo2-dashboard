@@ -1,3 +1,5 @@
+using Dashboard.Cluster;
+
 namespace Dashboard.Health;
 
 /// <summary>The state of every endpoint of a topology, and the action that checks them all.</summary>
@@ -16,7 +18,17 @@ public sealed class DashboardMonitor
     /// Where the monitor writes what it observes; the page keeps one log across reloads of the topology. A log of its
     /// own without one.
     /// </param>
-    public DashboardMonitor(Topology topology, NodeProber prober, PinnedVersionsReader versions, TimeProvider time, EventLog? events = null)
+    /// <param name="cluster">
+    /// What reads the cluster's files, for a topology with <c>cluster</c>; without it, or without a cluster in the
+    /// topology, the monitor has no cluster and reads nothing for one.
+    /// </param>
+    public DashboardMonitor(
+        Topology topology,
+        NodeProber prober,
+        PinnedVersionsReader versions,
+        TimeProvider time,
+        EventLog? events = null,
+        ClusterReader? cluster = null)
     {
         ArgumentNullException.ThrowIfNull(topology);
         Topology = topology;
@@ -32,6 +44,11 @@ public sealed class DashboardMonitor
                from target in deployable.Targets
                select (environment, deployable, target),
         ];
+        if (topology.Cluster is { } info && cluster is not null)
+        {
+            Cluster = new ClusterMonitor(info, topology.Environments, cluster, time, Events);
+            Cluster.Changed += () => Changed?.Invoke();
+        }
     }
 
     /// <summary>Raised whenever an endpoint's state changed and when a round of checks ended.</summary>
@@ -60,20 +77,34 @@ public sealed class DashboardMonitor
     /// </summary>
     public DeliveryReport? Delivery { get; private set; }
 
+    /// <summary>
+    /// The cluster the system runs in, read with every round of checks; null when the topology names none, and the
+    /// page then has no cluster view.
+    /// </summary>
+    public ClusterMonitor? Cluster { get; }
+
     /// <summary>The environment the others are compared with: the first of the topology.</summary>
     public string? FirstEnvironment => Topology.Environments.Count > 0 ? Topology.Environments[0].Name : null;
 
     /// <summary>
     /// Checks every endpoint at the same time. Each result is recorded as it arrives, so a node that hangs until its
     /// timeout delays neither the others nor their display. The pinned versions are read at the same time, once per
-    /// environment: a file that cannot be read is a result like any other and fails no check. So are the delivery
-    /// facts, every <see cref="DeliveryInterval"/>.
+    /// environment, and once per deployable that has a pin of its own (<c>pinUrl</c>): a file that cannot be read is a
+    /// result like any other and fails no check. So are the delivery facts, every <see cref="DeliveryInterval"/>, and
+    /// the two files of the cluster view, every round, where the topology names a cluster.
     /// </summary>
     public async Task CheckAllAsync(ProbeKind probe, CancellationToken cancellationToken)
     {
         var checks = _targets.Select(entry => CheckAsync(entry.Environment, entry.Deployable, entry.Target, probe, cancellationToken));
         var readings = Environments.Select(environment => ReadPinnedVersionsAsync(environment, cancellationToken));
-        await Task.WhenAll(checks.Concat(readings).Append(ReadDeliveryAsync(cancellationToken)));
+        var pins =
+            from environment in Environments
+            from deployable in environment.Deployables
+            where deployable.Info.PinUrl is not null
+            select ReadPinAsync(environment, deployable, cancellationToken);
+        await Task.WhenAll(checks.Concat(readings).Concat(pins)
+            .Append(ReadDeliveryAsync(cancellationToken))
+            .Append(Cluster?.CheckAsync(cancellationToken) ?? Task.CompletedTask));
         var now = _time.GetUtcNow();
         foreach (var environment in Environments)
         {
@@ -111,9 +142,37 @@ public sealed class DashboardMonitor
             var known = environment.LastReadPinned ?? before;
             var now = _time.GetUtcNow();
             Events.AddRange(environment.Deployables
+                // A deployable with a pin of its own is not pinned in this file.
+                .Where(deployable => deployable.Info.PinUrl is null)
                 .Select(deployable => EventDetector.Pinned(known, after, environment.Name, deployable.Info.Name, now))
                 .OfType<DashboardEvent>());
             environment.RememberPinned(after);
+        }
+
+        Changed?.Invoke();
+    }
+
+    /// <summary>Reads the pin of a deployable that has one of its own: its Kustomize file, by the rules of <c>versions.json</c>.</summary>
+    private async Task ReadPinAsync(EnvironmentStatus environment, DeployableStatus deployable, CancellationToken cancellationToken)
+    {
+        if (deployable.Info.PinUrl is not { } address)
+        {
+            return;
+        }
+
+        var before = deployable.Pinned;
+        var after = await _versions.ReadKustomizationAsync(address, deployable.Info.Name, cancellationToken);
+        deployable.RecordPin(after);
+        if (after.State == PinnedVersionsState.Read)
+        {
+            // Compared with the last good reading: a reading that failed in between hides no change.
+            if ((deployable.LastReadPinned ?? before) is { } known
+                && EventDetector.Pinned(known, after, environment.Name, deployable.Info.Name, _time.GetUtcNow()) is { } change)
+            {
+                Events.Add(change);
+            }
+
+            deployable.RememberPin(after);
         }
 
         Changed?.Invoke();
