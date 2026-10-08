@@ -1204,8 +1204,7 @@ main {
   gap: 0.4rem;
 }
 
-.button--selected,
-.runtime__fit[aria-pressed="true"] {
+.button--selected {
   border-color: var(--ink);
   background: var(--ink);
   color: var(--page);

@@ -48,7 +48,12 @@ function slotLayer(group) {
   if (!group.dataset.rtSlot) return null;
   const [x, y, width, height] = group.dataset.rtSlot.split(' ').map(Number);
   let layer = [...group.children].find(child => child.localName === 'g' && child.classList.contains('rt-slot'));
-  if (layer) layer.replaceChildren();
+  if (layer) {
+    // The layer is drawn again with every update: its classes of the state before go with its children, or a mark
+    // that was "down" and is "serving" again keeps both and the rule that comes later in the stylesheet wins.
+    layer.replaceChildren();
+    layer.setAttribute('class', 'rt-slot');
+  }
   else {
     layer = el('g', { class: 'rt-slot' });
     group.appendChild(layer);

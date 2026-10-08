@@ -17,9 +17,9 @@
                             @onclick="() => SelectAsync(entry.Name)">@entry.Name</button>
                 }
             </div>
-            <button type="button" class="button button--quiet runtime__fit" aria-pressed="@(_fit ? "true" : "false")"
-                    title="Fit the diagram to the width of the page (down to 70 % of its size), or show it at its actual size; it scrolls sideways when it does not fit"
-                    @onclick="() => _fit = !_fit">Fit to width</button>
+            <button type="button" class="button button--quiet runtime__fit"
+                    title="@(_fit ? "The diagram is fitted to the width of the page (down to 70 % of its size). Press to show it at its actual size; it then scrolls sideways" : "The diagram is shown at its actual size. Press to fit it to the width of the page (down to 70 % of its size)")"
+                    @onclick="() => _fit = !_fit">@(_fit ? "Actual size" : "Fit to width")</button>
         }
     </header>
 
