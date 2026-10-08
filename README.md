@@ -1098,7 +1098,7 @@ Where it is shown:
 | Health, after the environments | A heading per entry that is no environment of the topology: first those Azure still bills under another name (a removed environment, marked "not in the topology"), then `shared` ("no environment"), each with its line and a sentence that says what it holds. |
 | Runtime, under the diagram | "Cost of <environment>" and "Cost of what the environments share". |
 
-A line reads "Cost $1.52 yesterday · $9.80 in 7 days · $11.02 this month · as of 2026-10-06". The numbers are never
+A line reads "Cost $1.52 yesterday · $9.80 in 7 days · $11.02 this month · as of 2026-10-06 (UTC)". The numbers are never
 presented as live:
 
 - every line ends with the day its numbers are of ("as of"), and its tooltip says that Azure's cost arrives hours late
