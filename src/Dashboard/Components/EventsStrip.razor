@@ -5,7 +5,7 @@
         <h2 id="events-title" class="events__title">What just happened</h2>
         <p class="events__scope">
             Observed by this page since it was opened at
-            <time datetime="@TimeText.Iso(Opened)">@TimeText.Clock(Opened, Zone)</time>: state changes, restarts,
+            <time datetime="@TimeText.Iso(Opened)">@TimeText.Clock(Opened, Zone)</time>: state changes@(HasHealthChecks ? ", health-check entries that changed" : null), restarts,
             deployments, failovers, pins@(Monitor.Cluster is null ? " and traffic" : ", traffic and what changed in the cluster").
             The last @EventLog.DefaultCapacity are kept.
         </p>
@@ -76,6 +76,10 @@
 
     [Parameter, EditorRequired]
     public DateTimeOffset Now { get; set; }
+
+    /// <summary>True when a deployable answers a detailed health check: its entries are then among what the page observes.</summary>
+    private bool HasHealthChecks =>
+        Monitor.Topology.Environments.Any(environment => environment.Deployables.Any(deployable => deployable.HealthDetailPath is not null));
 
     private static string Where(DashboardEvent entry) => (entry.Environment, entry.Node) switch
     {

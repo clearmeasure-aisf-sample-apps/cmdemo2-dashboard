@@ -101,6 +101,44 @@ public class TelemetryTests
         Assert.Null(TrafficPlan.For(topology.Environments[2]));
     }
 
+    private static readonly IReadOnlyList<TrafficPlan> Plans =
+        [.. new[] { "tdd", "uat", "prod" }.Select(name => new TrafficPlan(name, [new Uri($"https://{name}.example.net/")], [$"ui at {name}.example.net"]))];
+
+    [Theory]
+    // The page shows no environment (the health view): the first one that has something to call.
+    [InlineData(null, null, false, false, "tdd")]
+    // The runtime view shows uat: the choice starts there, also when the page learns its view after the first rendering.
+    [InlineData(null, "uat", false, false, "uat")]
+    [InlineData("tdd", "uat", false, false, "uat")]
+    [InlineData("tdd", "UAT", false, false, "uat")]
+    // The viewer switches the diagram's environment: the choice follows.
+    [InlineData("uat", "prod", false, false, "prod")]
+    // The viewer chose one in the panel: it stays, whatever the diagram shows.
+    [InlineData("tdd", "uat", true, false, "tdd")]
+    // Traffic runs: nothing changes under it.
+    [InlineData("tdd", "uat", false, true, "tdd")]
+    // An environment without anything to call, or one the topology no longer has, is no choice.
+    [InlineData("tdd", "dev", false, false, "tdd")]
+    [InlineData("gone", "uat", true, false, "uat")]
+    [InlineData("gone", null, true, false, "tdd")]
+    public void TheTrafficPanelsEnvironmentFollowsTheOneThePageShowsUntilTheViewerChooses(string? current, string? shown, bool chosen, bool running, string expected) =>
+        Assert.Equal(expected, TrafficPlan.Choose(Plans, current, shown, chosen, running));
+
+    [Fact]
+    public void WithoutAnEnvironmentToCallThePanelHasNoChoice() =>
+        Assert.Null(TrafficPlan.Choose([], null, "uat", chosenByViewer: false, running: false));
+
+    [Theory]
+    [InlineData(true, 30, "every 10 s while traffic runs")]
+    [InlineData(true, 60, "every 10 s while traffic runs")]
+    [InlineData(true, 10, null)]
+    [InlineData(false, 30, null)]
+    public void TheIntervalControlSaysThatTrafficChecksEveryTenSeconds(bool running, int interval, string? expected)
+    {
+        Assert.Equal(10, TrafficPlan.CheckEverySeconds);
+        Assert.Equal(expected, TrafficPlan.IntervalNote(running, TimeSpan.FromSeconds(interval)));
+    }
+
     [Fact]
     public void ADeployableWithAnEmptyListOfTrafficPathsTakesNoGeneratedTraffic()
     {

@@ -131,7 +131,7 @@
 
         @* Under the diagram: what is known about the shown environment beyond its health (its resources in the Azure
            portal, what the pipeline's hourly health reports found, what it and the resources it shares cost, the code
-           its deployables run, how they were delivered).
+           its deployables run, how they were delivered), and last the code of the dashboard itself.
            Nothing where no source answered. *@
         @if (Shown is { } facts)
         {
@@ -162,6 +162,7 @@
                                      IdPrefix="@($"runtime-app-{deployableIndex++}")" Zone="Zone" Now="Now" />
                 }
                 <EnvironmentDelivery Monitor="Monitor" Environment="facts" IdPrefix="runtime" Zone="Zone" Now="Now" />
+                <DashboardCode Monitor="Monitor" IdPrefix="runtime-self" Zone="Zone" Now="Now" />
             </section>
         }
 

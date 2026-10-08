@@ -48,8 +48,18 @@ public sealed class TargetStatus(TargetKind kind, string name, Uri url, string? 
     /// </summary>
     public HealthDetail? HealthDetail { get; private set; }
 
+    /// <summary>
+    /// The last answer of the detailed health check that had entries: what a new answer is compared with to find an
+    /// entry that changed its state. Null until the node answered one.
+    /// </summary>
+    public HealthDetail? LastReadHealthDetail { get; private set; }
+
     /// <summary>Records the detailed health check of one check; null replaces what an earlier check read.</summary>
-    public void RecordHealthDetail(HealthDetail? detail) => HealthDetail = detail;
+    public void RecordHealthDetail(HealthDetail? detail)
+    {
+        HealthDetail = detail;
+        LastReadHealthDetail = detail ?? LastReadHealthDetail;
+    }
 
     /// <summary>
     /// The last <see cref="Trend.Length"/> readings of the node's telemetry, oldest first, for the sparklines: one per

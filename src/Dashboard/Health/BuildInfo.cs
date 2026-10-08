@@ -147,6 +147,16 @@ public static class BuildText
 
     public const string Other = "Other";
 
+    /// <summary>What the page calls itself next to the dashboard's name: the chip of its heading.</summary>
+    public const string ThisPage = "this page";
+
+    /// <summary>What the dashboard's own "Code" card is, for its section's help line.</summary>
+    public const string DashboardHelp =
+        "The build that serves this page, as its own site publishes it: the same facts every app of the system reports about its build.";
+
+    /// <summary>Whose code the dashboard's own "Code" card is about: <c>dashboard (this page)</c>.</summary>
+    public static string DashboardContext(string name) => $"{name} ({ThisPage})";
+
     /// <summary>The first seven characters of a commit.</summary>
     public static string ShortCommit(string commit)
     {

@@ -18,7 +18,21 @@ public sealed record Topology(SystemInfo System, DateTimeOffset? Generated, IRea
 /// <param name="Repository">The system repository on GitHub, where the deployments pin the versions.</param>
 /// <param name="DeliveryUrl">Where the browser reads the system's delivery facts (<c>delivery.json</c>); null without them.</param>
 /// <param name="CostUrl">Where the browser reads what the system cost in Azure (<c>cost.json</c>); null without it.</param>
-public sealed record SystemInfo(string Slug, string Name, Uri? Repository = null, Uri? DeliveryUrl = null, Uri? CostUrl = null);
+/// <param name="Dashboard">The dashboard itself and where it serves its own build facts; null when the topology does not say.</param>
+public sealed record SystemInfo(string Slug, string Name, Uri? Repository = null, Uri? DeliveryUrl = null, Uri? CostUrl = null, DashboardInfo? Dashboard = null);
+
+/// <summary>
+/// The dashboard itself as a deployable of the system (<c>system.dashboard</c> of <c>topology.json</c>): this page.
+/// </summary>
+/// <param name="Name">The deployable's name in the system (<c>dashboard</c>).</param>
+/// <param name="BuildPath">
+/// Where the site serves the facts of its own build, next to <c>index.html</c> (<c>/build-facts.json</c>, see
+/// <see cref="BuildInfo"/>): the page reads it from its own address.
+/// </param>
+public sealed record DashboardInfo(string Name, string BuildPath)
+{
+    public const string DefaultName = "dashboard";
+}
 
 /// <param name="Name">The environment's name.</param>
 /// <param name="Tier">The tier, for example <c>nonprod</c>.</param>

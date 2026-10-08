@@ -7,6 +7,9 @@ public enum EventKind
     /// <summary>An endpoint's health state changed.</summary>
     Health,
 
+    /// <summary>An entry of a web app's detailed health check changed its state.</summary>
+    HealthCheck,
+
     /// <summary>A web app's process started again.</summary>
     Restart,
 
@@ -98,12 +101,13 @@ public sealed class EventLog
 }
 
 /// <summary>What the page knew about one endpoint at one check: the input of <see cref="EventDetector"/>.</summary>
-public sealed record NodeObservation(HealthState State, string? Version, TelemetrySnapshot? Telemetry, ProbeResult? Last = null)
+/// <param name="Checks">The entries of the node's detailed health check; null when the check read none.</param>
+public sealed record NodeObservation(HealthState State, string? Version, TelemetrySnapshot? Telemetry, ProbeResult? Last = null, HealthDetail? Checks = null)
 {
     public static NodeObservation Of(TargetStatus target)
     {
         ArgumentNullException.ThrowIfNull(target);
-        return new NodeObservation(target.State, target.Version, target.Telemetry, target.Last);
+        return new NodeObservation(target.State, target.Version, target.Telemetry, target.Last, target.HealthDetail);
     }
 }
 
@@ -114,8 +118,9 @@ public sealed record NodeObservation(HealthState State, string? Version, Telemet
 public static class EventDetector
 {
     /// <summary>
-    /// The events of one endpoint between the check before and this one: its health state, and for a web app a
-    /// restart and another version. The first check of the page is an event only when the endpoint is not healthy.
+    /// The events of one endpoint between the check before and this one: its health state, and for a web app the
+    /// entries of its detailed health check that changed, a restart and another version. The first check of the page
+    /// is an event only when the endpoint, or an entry, is not healthy.
     /// </summary>
     /// <param name="node">The node's label: its region or name, or "Front Door".</param>
     /// <param name="isNode">False for a Front Door endpoint, which answers with the version of whichever node served.</param>
@@ -141,6 +146,8 @@ public static class EventDetector
             return events;
         }
 
+        // After the state they explain: the list shows the events of one moment in this order.
+        events.AddRange(HealthChecks(before.Checks, after.Checks, environment, deployable, node, at));
         if (Restarted(before.Telemetry, after.Telemetry))
         {
             var uptime = after.Telemetry?.Process?.UptimeSeconds is { } seconds
@@ -152,6 +159,54 @@ public static class EventDetector
         if (before.Version is { } old && after.Version is { } current && !string.Equals(old, current, StringComparison.OrdinalIgnoreCase))
         {
             events.Add(new DashboardEvent(at, EventKind.Version, EventLevel.Info, environment, node, $"{deployable}: {old} → {current}, deployed"));
+        }
+
+        return events;
+    }
+
+    /// <summary>
+    /// The entries of a node's detailed health check whose state changed between two answers, in the answer's order:
+    /// <c>ui: LlmGateway Healthy → Degraded: Chat client answered slowly</c>, with the entry's own words. The first
+    /// answer, and an entry the answer before did not have, is an event only when the entry is not healthy. An answer
+    /// without entries (<paramref name="after"/> null) says nothing, and neither does an entry that is gone.
+    /// </summary>
+    /// <param name="before">The last answer that had entries; null before the first.</param>
+    public static IReadOnlyList<DashboardEvent> HealthChecks(
+        HealthDetail? before,
+        HealthDetail? after,
+        string environment,
+        string deployable,
+        string node,
+        DateTimeOffset at)
+    {
+        if (after is null)
+        {
+            return [];
+        }
+
+        var events = new List<DashboardEvent>();
+        foreach (var entry in after.Entries)
+        {
+            var label = HealthDetailText.Label(entry.State);
+            var words = entry.Description is { } description ? $": {description.TrimEnd('.')}" : string.Empty;
+            string? text = null;
+            if (before is null)
+            {
+                text = entry.IsHealthy ? null : $"{deployable}: {entry.Name} {label} at the first check{words}";
+            }
+            else if (before.Find(entry.Name) is not { } known)
+            {
+                text = entry.IsHealthy ? null : $"{deployable}: {entry.Name} {label}, new in the health check{words}";
+            }
+            else if (known.State != entry.State)
+            {
+                text = $"{deployable}: {entry.Name} {HealthDetailText.Label(known.State)} → {label}{words}";
+            }
+
+            if (text is not null)
+            {
+                events.Add(new DashboardEvent(at, EventKind.HealthCheck, LevelOf(entry.State), environment, node, text));
+            }
         }
 
         return events;
@@ -237,6 +292,14 @@ public static class EventDetector
     /// <summary>The traffic button, started or stopped, in the words of the panel.</summary>
     public static DashboardEvent Traffic(string environment, string text, DateTimeOffset at) =>
         new(at, EventKind.Traffic, EventLevel.Info, environment, null, text);
+
+    private static EventLevel LevelOf(CheckState state) => state switch
+    {
+        CheckState.Healthy => EventLevel.Good,
+        CheckState.Degraded => EventLevel.Warning,
+        CheckState.Unhealthy => EventLevel.Problem,
+        _ => EventLevel.Info,
+    };
 
     private static EventLevel LevelOf(HealthState state) => state switch
     {

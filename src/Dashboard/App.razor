@@ -64,6 +64,11 @@
                 }
             </select>
         </label>
+        @* While generated traffic runs the page checks more often than the interval says: said here, next to it. *@
+        @if (TrafficPlan.IntervalNote(_trafficRunning, _poller.Interval) is { } faster)
+        {
+            <span class="field__note" role="status">@faster</span>
+        }
         <label class="field">
             <span>Probe</span>
             <select value="@_probe" title="@ProbeHelp" aria-describedby="probe-help" @onchange="OnProbeChanged">
@@ -148,6 +153,8 @@
         }
 
         <SharedCost Monitor="monitor" Now="Time.GetUtcNow()" />
+        @* The dashboard's own build, after the environments: there only when the topology names its build facts. *@
+        <DashboardCode Monitor="monitor" Heading="true" IdPrefix="self" Zone="Zone" Now="Time.GetUtcNow()" />
     }
     else if (_errors is { } errors)
     {
@@ -176,7 +183,8 @@
 @if (_monitor is { } trafficMonitor)
 {
     <EventsStrip Events="_events" Monitor="trafficMonitor" Opened="_opened" Zone="Zone" Now="Time.GetUtcNow()" />
-    <TrafficPanel Monitor="trafficMonitor" Environment="@(_address.Environment ?? _runtimeEnvironment)" CheckNow="CheckNow" Time="Time" Events="_events" />
+    <TrafficPanel Monitor="trafficMonitor" Environment="@(_address.Environment ?? _runtimeEnvironment)" CheckNow="CheckNow" Time="Time" Events="_events"
+                  RunningChanged="OnTrafficRunningChanged" />
 }
 
 <footer class="page-footer">
@@ -234,6 +242,7 @@
     private DotNetObjectReference<App>? _self;
     private ViewAddress _address = ViewAddress.Health;
     private string? _runtimeEnvironment;
+    private bool _trafficRunning;
 
     private TimeZoneInfo Zone => Time.LocalTimeZone;
 
@@ -386,6 +395,9 @@
 
             _monitor = result.Topology is { } topology ? new DashboardMonitor(topology, Prober, Versions, Time, _events, ClusterFiles) : null;
             _errors = result.Topology is null ? result.Errors : null;
+
+            // Without a topology the page has no traffic panel, and what it sent has stopped with it.
+            _trafficRunning = _trafficRunning && _monitor is not null;
             if (_monitor is { } monitor)
             {
                 monitor.Changed += OnMonitorChanged;
@@ -402,6 +414,9 @@
         await LoadTopologyAsync();
         _poller.CheckNow();
     }
+
+    /// <summary>Called by the traffic panel when its traffic starts and when it ends.</summary>
+    private void OnTrafficRunningChanged(bool running) => _trafficRunning = running;
 
     private void OnMonitorChanged() => _ = InvokeAsync(StateHasChanged);
 

@@ -25,14 +25,16 @@ For each environment (tdd, uat, prod) and each deployable in it, the health view
   unhealthy tile says which of them failed (see "Health checks, entry by entry");
 - per deployable, a "Code" card (the build its primary node runs: commit, lines of code by language, tests, coverage,
   complexity, CRAP, Qodana) and a "Delivery" card (deployed when, signed off by whom, lead time, how far behind the
-  first environment), each only when its source answers;
+  first environment), each only when its source answers; and after the environments the "Code" card of the dashboard
+  itself, the build that serves the page (see "The dashboard's own build");
 - under each environment's name, what it cost in Azure (the last complete day, seven days, the month so far, and the
   services that cost most), after the environments the same for what they share, and in the header for the whole
   system: a day old, and said so (see "Cost");
 - under each environment's name, in how many of the pipeline's hourly health reports it was healthy, in 24 hours and
   in seven days, and when one last failed: hourly checks, not continuous monitoring, and said so (see "Availability");
-- under every view, "What just happened": the last 50 events this page observed (state changes, restarts,
-  deployments, failovers, pins, traffic, and for a system with a cluster what changed in it);
+- under every view, "What just happened": the last 50 events this page observed (state changes, entries of a
+  health check that changed, restarts, deployments, failovers, pins, traffic, and for a system with a cluster what
+  changed in it);
 - where the topology has a link for it, every number and name leads to its place in the Azure portal or in Octopus
   Deploy;
 - which region is expected to serve the traffic, a "Failed over to <region>" banner when the primary is not healthy
@@ -84,7 +86,8 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 {
   "system": { "slug": "cmdemo2", "name": "CM demo 2 multi-region", "repository": "https://github.com/example-org/cmdemo2-system",
               "deliveryUrl": "https://raw.githubusercontent.com/example-org/cmdemo2-system/status/delivery.json",
-              "costUrl": "https://raw.githubusercontent.com/example-org/cmdemo2-system/status/cost.json" },
+              "costUrl": "https://raw.githubusercontent.com/example-org/cmdemo2-system/status/cost.json",
+              "dashboard": { "name": "dashboard", "buildPath": "/build-facts.json" } },
   "generated": "2026-10-04T22:00:00Z",
   "environments": [
     {
@@ -120,6 +123,9 @@ topology" is pressed. The deployment writes the real file; the build does not kn
 | `system.repository` | no, may be `null` | The footer names the system without a link to its repository. |
 | `system.deliveryUrl` | no, may be `null` | No "Delivery" cards and no last failover test: nothing is read (see "Delivery"). |
 | `system.costUrl` | no, may be `null` | No cost anywhere on the page: nothing is read (see "Cost"). |
+| `system.dashboard` | no, may be `null`; an object | No "Code" card of the dashboard itself: nothing is read from the page's own address but the topology and `runtime/` (see "The dashboard's own build"). Anything but an object is read as absent. |
+| `system.dashboard.buildPath` | no, may be `null` | The same: without the path there is no `system.dashboard`. A path of the page's own site, read from its root whatever it starts with (`/build-facts.json`). |
+| `system.dashboard.name` | no | `dashboard`. The name the card and its heading show. |
 | `generated` | no | The footer does not show when the topology was generated. |
 | `environments` | yes, an array | Error. |
 | `environments[].name` | yes | Error. |
@@ -178,8 +184,10 @@ answers while the cluster does not). The topology may then list each dashboard a
 address, `healthPath` and `alivePath` `/`, `versionPath` `/version.json` (the Build writes that file next to
 `index.html`), and an empty `trafficPaths`, so the traffic button leaves it alone. Each dashboard then checks the
 others like any node, with their version and pin; in the runtime view the site that serves the page you are looking
-at says "This page", and every other one shows its state, with the arrow from the browser carrying it. The checked
-site must let other origins read `/` and `/version.json`.
+at says "This page", and every other one shows its state, with the arrow from the browser carrying it. The topology
+may also name `buildPath` `/build-facts.json` for a dashboard: the Build writes that file next to `index.html` too,
+and the dashboard then has a "Code" card like an app (see "Code"). The checked site must let other origins read `/`,
+`/version.json` and `/build-facts.json`.
 
 ## Pinned versions: what Git says next to what runs
 
@@ -287,7 +295,7 @@ diagram in place:
 | Element | What it shows |
 |---|---|
 | Web app, Front Door endpoint | The box's colour and border by state (Healthy, Unhealthy, Unreachable, Checking), and a tile: the state's badge with its word, HTTP status and latency, the version, the last 30 checks. A web app also shows its version next to the pinned one ("pinned 2.4.21: in sync", "differs from pinned 2.4.21"), its own numbers where it reports them ("12 req/min · p95 85 ms" with the trend of the requests, "0 errors · 0 exceptions/min", "CPU 3.2 % · 412 MB · 2 in flight" with the trend of the CPU, "up 2 h" or "restarted 3 min ago") and its role ("primary: serves traffic", "standby: ready, no traffic"; the only node of a deployable without a Front Door endpoint has no role: "serves traffic", "not serving"), and last, where it answers a detailed health check, one small mark per entry with the summary in words ("8 checks healthy", "LlmGateway degraded", "2 of 8 checks not healthy"; see "Health checks, entry by entry"); the endpoint shows where it routes ("routes to eastus2 (failed over)") and whether it agrees with the web apps. |
-| Region of web apps | A mark with words: "serving traffic" (green frame), "standby: ready", "not serving" (red frame), by the same serving decision as the health view's banner. |
+| Region of web apps | A mark with words: "serving traffic" (green frame), "standby: ready", "not serving" (red frame), by the same serving decision as the health view's banner. A region of the database and the static sites has a note in slate, in italics ("database: reachable; static sites: not probed"). |
 | Front Door to an origin | Solid and green while it carries the traffic, dotted grey while idle, dashed red when the origin is not healthy: a failover is the green line moving from priority 1 to priority 2. |
 | Web app to the database | Green from the web app that serves, dotted from the others. |
 | Number line of a relationship | Calls per minute of the last minute, in a solid frame, as the web apps count them: browser to Front Door (the sum of its origins' requests from Front Door), Front Door to an origin (its requests from Front Door; Front Door's health probes next to the role), web app to database (the SQL commands of its requests, with the background ones next to the role, "app queries · 55 background"; all SQL commands for an app that does not tell them apart), web app to dependency (the web app's outgoing HTTP calls, `http.perMinute`, when the web app has exactly one dependency; a dash, "not counted apart", when it has more, because the app counts them as one number). Next to the number, its trend over the last checks of this page. A dashed frame with "–" where no web app reports a number (no `telemetryPath`, or an app without the endpoint). |
@@ -302,8 +310,9 @@ width. Hover a node or a line for its details.
 
 Under the diagram, for the environment it shows: the links to its resources in the Azure portal, what the pipeline's
 hourly health reports found (see "Availability"), what it cost and what the resources it shares with the others cost
-(see "Cost"), and per deployable the "Code" and "Delivery" cards of
-the health view (see "Code" and "Delivery"); then the legend.
+(see "Cost"), per deployable the "Code" and "Delivery" cards of
+the health view (see "Code" and "Delivery"), and last the "Code" card of the dashboard itself (see "The dashboard's
+own build"); then the legend.
 
 A deployment from before the runtime view has no `runtime/`: the tab then says that the diagram is not available for
 this deployment, and the health view works as before.
@@ -707,14 +716,15 @@ global.json                  the SDK
 src/Dashboard                the Blazor WebAssembly app
   App.razor                  the page: header, view tabs, environments, footer, polling
   Components/                tile, history strip, trend line, state badge, deployable section, version line, code and
-                             delivery cards, cost line, availability line, events strip, links, runtime view, legend,
-                             cluster view (its cards, tables, meter and badge)
+                             delivery cards, the dashboard's own code, cost line, availability line, events strip,
+                             links, runtime view, legend, cluster view (its cards, tables, meter and badge)
   Health/                    the health logic, plain C# without a browser
   Runtime/                   the runtime view's files, payload and address, plain C# without a browser
   Cluster/                   the cluster view's files, states, grouping and words, plain C# without a browser
   wwwroot/                   index.html, css/app.css, js/visibility.js, js/location.js, js/runtime.js, the sample
                              topology.json and runtime/
 src/Dashboard.Tests          xUnit tests of the health logic; Samples/ holds a cluster.json and an aks.json
+scripts/Write-BuildFacts.ps1 the Build's step that writes build-facts.json, the dashboard's own build facts
 .github/workflows            build.yml, release.yml, secret-scan.yml
 ```
 
@@ -723,7 +733,9 @@ The health logic is in `src/Dashboard/Health` and has no dependency on the brows
 (`ServingAssessment`), the summary (`HealthSummary`), the history (`HistoryBuffer`), the polling loop (`Poller`),
 reading the pinned versions (`PinnedVersions`, `PinnedVersionsReader`) and comparing them with the nodes
 (`VersionAssessment`, `VersionSummary`), a node's telemetry with its process (`TelemetrySnapshot`, `ProcessVitals`),
-the trends (`Trend`, `Trends`), the events (`EventDetector`, `EventLog`), the build facts (`BuildInfo`, `BuildText`),
+the trends (`Trend`, `Trends`), the events (`EventDetector`, `EventLog`), the build facts (`BuildInfo`, `BuildText`;
+the dashboard's own are `DashboardInfo` of the topology and `DashboardMonitor.DashboardBuild`), the traffic button's
+requests and its choice of environment (`TrafficPlan`),
 the entries of a detailed health check (`HealthDetail`, `HealthDetailText`),
 the delivery facts (`DeliveryReport`, `DeliveryText`) with the hourly health reports (`HealthReports`,
 `AvailabilityText`), the cost (`CostReport`, `CostText`) and the links (`LinkSet`, `LinkText`). The runtime view's logic is in `src/Dashboard/Runtime`: reading `runtime/`
@@ -743,8 +755,10 @@ The site is static and expects to be served from the root of its host (`<base hr
 ## Build and release
 
 - **Build** (`.github/workflows/build.yml`): on every pull request and every push to `master`. It builds with
-  warnings as errors, runs the tests, publishes the site and uploads the content of the published `wwwroot` folder as
-  the artifact `dashboard-site`. The job `Build result` is the check the default-branch ruleset requires.
+  warnings as errors, runs the tests (their results as a trx file and their coverage as a Cobertura file, in
+  `TestResults/`), publishes the site, writes `version.json` and `build-facts.json` next to `index.html` and uploads
+  the content of the published `wwwroot` folder as the artifact `dashboard-site`. The job `Build result` is the check
+  the default-branch ruleset requires.
 - **Release** (`.github/workflows/release.yml`): after a green Build of `master`. It zips the content of
   `dashboard-site` (`index.html` at the root of the zip) as `<SYSTEM_SLUG>-<DEPLOYABLE_NAME>.<version>.zip`, pushes
   it to the Octopus built-in feed and creates the release `<version>` of the Octopus project
@@ -760,10 +774,27 @@ For a system that serves the dashboard from its cluster (runtime aks-argocd), th
 (`AZURE_CLIENT_ID_ACR_PUSH`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `ACR_NAME`), locks the tag and creates the
 Octopus release. The image carries the sample `topology.json` and `runtime/` too, but nginx serves those two paths
 from `/content`, where the cluster mounts what the deployment committed for the environment (a ConfigMap with the
-flat keys `topology.json` and `runtime-<file>`).
+flat keys `topology.json` and `runtime-<file>`). Both releases take the artifact `dashboard-site` whole, so both serve
+`/version.json` and `/build-facts.json` as the Build wrote them: the zip at its root, the image from nginx's root.
 
 The version is `MAJOR_VERSION.MINOR_VERSION.<run number of the Build run>`; the two numbers are in `build.yml`. The
 build passes it as `-p:Version=...`, and the dashboard shows it in its footer. A local build shows `0.0.0-local`.
+
+Every release says what it was built from and how good that build is, in two files the Build writes into the site:
+`/version.json` (`{ "version": "1.0.42" }`) and `/build-facts.json` (`scripts/Write-BuildFacts.ps1`: the version, the
+commit and the Build's run, the lines of code, the tests, the coverage and the complexity; see "Code"). Both are part
+of the artifact `dashboard-site`, so the zip and the image carry them without a step of their own, and a deployment
+does not change them. In the image, nginx answers them, like `index.html`, with `Cache-Control: no-cache`: their
+names stay the same from one release to the next. To write the facts of a working copy:
+
+```
+dotnet test -c Release --logger trx --collect:"XPlat Code Coverage" --results-directory TestResults
+dotnet publish src/Dashboard -c Release -o publish
+pwsh -NoProfile -File scripts/Write-BuildFacts.ps1    # publish/wwwroot/build-facts.json
+```
+
+Without the environment of GitHub Actions the commit and the two links are `null`, and without `TestResults/` the
+tests, the coverage and the complexity are; the script says each as a `SKIP` line.
 
 The zip carries the sample `topology.json` and `runtime/`; the deployment replaces them with the real ones (it removes
 the sample's `runtime/` first). The build writes no precompressed copy of those files (`topology.json.br`,
@@ -827,7 +858,14 @@ now 12"). A line needs two readings; a check without a reading is left out.
 The panel at the bottom of the page sends two requests a second for a minute (`TrafficPlan`) from the browser to the
 chosen environment's public addresses, the Front Door endpoint or else the primary node, round-robin over
 `trafficPaths`. They are plain GETs in mode `no-cors` (`js/traffic.js`): the browser needs no CORS answer, and the
-response stays opaque. While it runs, the page checks every 10 s.
+response stays opaque. While it runs, the page checks every 10 s, and says so next to the "Interval" control
+("every 10 s while traffic runs") while that control names a longer interval; the control keeps the viewer's choice,
+which applies again when the traffic ends.
+
+The panel's "Environment" starts on the environment the runtime view shows (`#runtime/uat`: uat) and follows it when
+the viewer selects another diagram; where the page has shown none (the health view), it is the first environment
+that has something to call. Once the viewer picks an environment in the panel, that choice stays, and nothing
+changes it while traffic runs (`TrafficPlan.Choose`).
 
 ## Health checks, entry by entry
 
@@ -867,7 +905,7 @@ and an answer without a single named entry is no answer.
   deployment named for it (see "The runtime view").
 
 The health view's state of a tile is still the health check's HTTP status and nothing else: a `Degraded` entry
-changes no state, no summary and no event.
+changes no state and no summary. An entry that changes its state is an event (see "What just happened").
 
 ## What just happened
 
@@ -879,6 +917,7 @@ the one before (`EventDetector`); nothing comes from a server's log, and a reloa
 | Event | When | Example |
 |---|---|---|
 | Health | An endpoint's state changed; at the first check only when it is not healthy. | "ui: Healthy → Unreachable: No answer within 10 s" |
+| Health check | An entry of a web app's detailed health check has another state than in the last answer that had entries (so a check that read none, or the probe Liveness, hides no change); at the first answer, and for an entry the answer before did not have, only when it is not healthy. With the entry's own words. Its level is the entry's new state: Healthy good news, Degraded a warning, Unhealthy a problem. An entry that is gone is no event, and neither is the same state in other words. It follows the node's own state change of the same check, which it explains. | "ui: LlmGateway Healthy → Degraded: Chat client answered slowly: 4.2 s", "ui: DataAccess Unhealthy at the first check: Database connection failed" |
 | Restart | A web app's `uptimeSeconds` went down, or (without it) its `startedAt` is later. Compared with its last reading, also across checks it did not answer. | "ui restarted, up 12 s" |
 | Deployment | A web app reports another version. Not for a Front Door endpoint, which answers for whichever node served. | "ui: 2.4.14 → 2.4.15, deployed" |
 | Serving region | At the end of a round, the node expected to serve changed: a failover, a failback, nothing serves, serves again. | "Failover: westus3 → eastus2. Primary westus3 is unreachable; eastus2 is expected to serve traffic." |
@@ -916,6 +955,37 @@ cyclomatic complexity; the worst CRAP score and how many methods are over the th
 problems Qodana reports (a warning when there are any). Each environment's card is its own primary node's answer, so
 two environments that run different builds show different cards. An answer that is not this JSON, or no answer, is
 no card.
+
+### The dashboard's own facts: `/build-facts.json`
+
+The dashboard publishes the facts of its own build as well: the file `/build-facts.json` next to `index.html`, in
+the shape above. Its Build writes it (`scripts/Write-BuildFacts.ps1`, see "Build and release"), so a release carries
+the facts of the build it was made from, and a topology that lists a dashboard as a node may name it as that node's
+`buildPath` (see "A dashboard as a node"). What each part holds:
+
+| Part | What it holds |
+|---|---|
+| `version` | The version of the build, `MAJOR.MINOR.<run number>`: the number `/version.json` holds. |
+| `commit`, `commitUrl` | The commit the Build checked out, and its page on GitHub. |
+| `builtAt` | When the Build wrote the file (UTC). |
+| `buildUrl` | The Build's run on GitHub. |
+| `code` | The non-blank lines and the files of the repository, by language, over the files Git tracks: C#, Razor, CSS, Markdown, JavaScript, PowerShell, YAML and HTML. Not counted: what nobody wrote by hand (`bin/`, `obj/`, `*.g.cs`, `*.min.*`) and every file of another kind: data and pictures (JSON, SVG, PlantUML), the project files, `Dockerfile` and `nginx.conf`. |
+| `tests` | `unit`: the tests that passed in the Build's test run (its trx file). The dashboard has unit tests only, so the file names no other kind and the card says the count as one kind, for example "741 unit": an `integration` or `acceptance` of 0 would read as tests that exist and found nothing to run. |
+| `coverage` | `linePercent` and `branchPercent` of that test run, from the Cobertura file coverlet writes. The components (`.razor`) count, and no unit test renders one; the code the build generates under `obj/` does not count. |
+| `complexity` | The cyclomatic complexity coverlet writes for every method in the same file: the `average`, the `max` and the number of `methods`, generated code left out. |
+| `crap` | `null`: the Build makes no CRAP report and has no threshold to hold a score against. |
+| `analysis` | `null`: the Build does not run Qodana. |
+
+A part whose input is missing is `null` too, and the Build's log says why in a `SKIP` line: the commit and the two
+links outside GitHub Actions, the tests without a trx file, the coverage and the complexity without a Cobertura
+file. The card leaves a `null` part out, so a dashboard's "Code" card has no CRAP line and no Qodana line.
+
+On a system whose topology does not list the dashboard as a node (the App Service runtime: `deploy-staticwebapp.ps1`
+lists the web apps only), the deployment writes `system.dashboard = { "name": "<deployable>", "buildPath":
+"/build-facts.json" }` into `topology.json` from the static deployable's `buildPath` in `system.json`, and only when
+the release carries the file. The page then reads the file from its own origin (never from another site) and shows it
+as the Code card "dashboard (this page)": after the environments in the Health view, last under the diagram in the
+Runtime view. Without the key the page asks for nothing.
 
 ## Delivery
 

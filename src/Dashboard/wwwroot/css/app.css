@@ -250,6 +250,12 @@ code {
   font-size: 0.9rem;
 }
 
+/* A remark on the control before it: quiet words, no state. */
+.field__note {
+  color: var(--ink-secondary);
+  font-size: 0.85rem;
+}
+
 .button,
 .field select {
   min-height: 2.25rem;
@@ -1388,7 +1394,8 @@ main {
 .rt-mark--standby .rt-icon__line,
 .rt-mark--checking .rt-icon__ring,
 .rt-mark--checking .rt-icon__line { stroke: #37474f; }
-.rt-mark--neutral .rt-mark__text { fill: #607d8b; font-weight: 400; font-style: italic; }
+/* The slate of the number lines' roles: 5.6 to 1 on the sheet (the lighter #607d8b was 4.4 to 1). */
+.rt-mark--neutral .rt-mark__text { fill: #546e7a; font-weight: 400; font-style: italic; }
 
 /* Links in the diagram: real <a> elements. Underlined, because the text keeps the colour of its place; the focus ring
    is drawn around the words. */

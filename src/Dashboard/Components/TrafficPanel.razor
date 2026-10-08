@@ -31,17 +31,17 @@
             @($"{TrafficPlan.PerSecond} requests a second for {TrafficPlan.Seconds} s from this browser to {string.Join(", ", selected.Targets)}: ")
         }
         the start page and the app's representative reads, so the calls go @Route. The numbers count the last minute
-        and appear with the next check; during the traffic the page checks every @CheckEverySeconds s.
+        and appear with the next check; during the traffic the page checks every @TrafficPlan.CheckEverySeconds s.
     </p>
 </section>
 
 @code {
-    private const int CheckEverySeconds = 10;
     private const string ButtonHelp = "Sends representative requests for one minute; press Stop traffic to end sooner";
 
     private readonly CancellationTokenSource _stopping = new();
     private IReadOnlyList<TrafficPlan> _plans = [];
     private string? _environment;
+    private bool _chosen;
     private IJSObjectReference? _module;
     private int[] _status = [0, 0, 0, 1];
     private DateTimeOffset? _started;
@@ -53,9 +53,16 @@
     [Parameter, EditorRequired]
     public DashboardMonitor Monitor { get; set; } = default!;
 
-    /// <summary>The environment chosen first: the one the runtime view shows, if any.</summary>
+    /// <summary>
+    /// The environment the page shows (the runtime view's), if any: the choice follows it until the viewer picks one
+    /// here, and not while traffic runs (<see cref="TrafficPlan.Choose"/>).
+    /// </summary>
     [Parameter]
     public string? Environment { get; set; }
+
+    /// <summary>Tells the page that traffic started (true) or ended: it then checks more often than its interval says.</summary>
+    [Parameter]
+    public EventCallback<bool> RunningChanged { get; set; }
 
     /// <summary>Asks the page for a round of checks, so the numbers follow the traffic.</summary>
     [Parameter]
@@ -101,14 +108,17 @@
     protected override void OnParametersSet()
     {
         _plans = [.. Monitor.Topology.Environments.Select(TrafficPlan.For).OfType<TrafficPlan>()];
-        if (!Running && (_environment is null || _plans.All(plan => plan.Environment != _environment)))
-        {
-            _environment = _plans.FirstOrDefault(plan => string.Equals(plan.Environment, Environment, StringComparison.OrdinalIgnoreCase))?.Environment
-                ?? _plans.FirstOrDefault()?.Environment;
-        }
+
+        // Decided with every rendering of the page, not only the first: the page reads the view of its address after
+        // its first rendering, and the viewer switches the diagram's environment later.
+        _environment = TrafficPlan.Choose(_plans, _environment, Environment, _chosen, Running);
     }
 
-    private void OnEnvironmentChanged(ChangeEventArgs change) => _environment = change.Value?.ToString();
+    private void OnEnvironmentChanged(ChangeEventArgs change)
+    {
+        _environment = change.Value?.ToString();
+        _chosen = true;
+    }
 
     private async Task StartAsync()
     {
@@ -128,6 +138,7 @@
             plan.Environment,
             $"Traffic started: {TrafficPlan.PerSecond} requests a second for {TrafficPlan.Seconds} s to {string.Join(", ", plan.Targets)}",
             _started.Value));
+        await RunningChanged.InvokeAsync(true);
         _ = FollowAsync();
     }
 
@@ -141,7 +152,7 @@
             while (await timer.WaitForNextTickAsync(_stopping.Token))
             {
                 _status = await _module!.InvokeAsync<int[]>("status", _stopping.Token);
-                if (++ticks % CheckEverySeconds == 0 || !Running)
+                if (++ticks % TrafficPlan.CheckEverySeconds == 0 || !Running)
                 {
                     await CheckNow.InvokeAsync();
                 }
@@ -150,6 +161,7 @@
                 if (!Running)
                 {
                     Ended();
+                    await RunningChanged.InvokeAsync(false);
                     return;
                 }
             }
