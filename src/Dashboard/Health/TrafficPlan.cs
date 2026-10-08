@@ -16,6 +16,39 @@ public sealed record TrafficPlan(string Environment, IReadOnlyList<Uri> Addresse
     /// <summary>How long one press sends: the counters' window is one minute.</summary>
     public const int Seconds = 60;
 
+    /// <summary>How often the page checks while the traffic runs, so the numbers follow it.</summary>
+    public const int CheckEverySeconds = 10;
+
+    /// <summary>
+    /// The environment the panel's choice shows, among those that have something to call. The viewer's own choice
+    /// stays, and so does everything while traffic runs; otherwise the choice follows the environment the page shows
+    /// (the runtime view's), and is the first one where the page shows none. Null when no environment has a plan.
+    /// </summary>
+    /// <param name="current">What the choice shows now; null before the first decision.</param>
+    /// <param name="shown">The environment the page shows, or last showed; null while it has shown none.</param>
+    /// <param name="chosenByViewer">True once the viewer picked <paramref name="current"/> in the panel.</param>
+    public static string? Choose(IReadOnlyList<TrafficPlan> plans, string? current, string? shown, bool chosenByViewer, bool running)
+    {
+        ArgumentNullException.ThrowIfNull(plans);
+        string? Known(string? name) =>
+            name is null ? null : plans.FirstOrDefault(plan => string.Equals(plan.Environment, name, StringComparison.OrdinalIgnoreCase))?.Environment;
+
+        if (running)
+        {
+            return current;
+        }
+
+        return (chosenByViewer ? Known(current) : null) ?? Known(shown) ?? (plans.Count > 0 ? plans[0].Environment : null);
+    }
+
+    /// <summary>
+    /// What stands next to the interval control while traffic runs: the page then checks every
+    /// <see cref="CheckEverySeconds"/> s, whatever the control says. Null when no traffic runs, and when the chosen
+    /// interval is no longer than that (the control is then right as it is).
+    /// </summary>
+    public static string? IntervalNote(bool running, TimeSpan interval) =>
+        running && interval > TimeSpan.FromSeconds(CheckEverySeconds) ? $"every {CheckEverySeconds} s while traffic runs" : null;
+
     /// <summary>The plan of an environment; null when it has nothing to call.</summary>
     public static TrafficPlan? For(EnvironmentInfo environment)
     {

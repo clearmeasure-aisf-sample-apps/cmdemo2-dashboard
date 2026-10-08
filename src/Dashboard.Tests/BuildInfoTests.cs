@@ -80,6 +80,53 @@ public class BuildInfoTests
         Assert.Equal("1,203 files", BuildText.Size(new CodeSize(null, 1203, [])));
     }
 
+    /// <summary>
+    /// A dashboard's own facts, as its Build writes them (scripts/Write-BuildFacts.ps1): unit tests only, and null
+    /// for what that build does not measure (a CRAP report, Qodana). The card then says the tests as one kind and
+    /// has no line for the rest.
+    /// </summary>
+    [Fact]
+    public void ADashboardsOwnFactsNameUnitTestsOnlyAndLeaveOutWhatItsBuildDoesNotMeasure()
+    {
+        var build = BuildInfo.Parse("""
+            { "version": "1.0.42", "commit": "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567", "commitUrl": "https://github.example.net/o/dashboard/commit/0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+              "builtAt": "2026-10-07T20:00:00Z", "buildUrl": "https://github.example.net/o/dashboard/actions/runs/42",
+              "code": { "linesOfCode": 19200, "files": 133, "languages": [ { "name": "C#", "lines": 12600, "files": 87 }, { "name": "Razor", "lines": 2733, "files": 33 } ] },
+              "tests": { "unit": 1742 },
+              "coverage": { "linePercent": 75.6, "branchPercent": 65.2 },
+              "complexity": { "average": 3.6, "max": 104, "methods": 1024 },
+              "crap": null,
+              "analysis": null }
+            """)!;
+
+        Assert.Equal("1.0.42", build.Version);
+        Assert.Equal(new TestCounts(1742, null, null), build.Tests);
+        Assert.Equal("1,742 unit", BuildText.Tests(build.Tests!));
+        Assert.Equal("75.6 % of lines, 65.2 % of branches", BuildText.Coverage(build.Coverage!));
+        Assert.Equal("average 3.6, worst 104 (1,024 methods)", BuildText.Complexity(build.Complexity!));
+        Assert.Null(build.Crap);
+        Assert.Null(build.QodanaProblems);
+    }
+
+    /// <summary>The same file from a working copy: no commit and no run outside GitHub Actions, no test results.</summary>
+    [Fact]
+    public void ADashboardsFactsOfALocalBuildAreStillACard()
+    {
+        var build = BuildInfo.Parse("""
+            { "version": null, "commit": null, "commitUrl": null, "builtAt": "2026-10-07T20:00:00Z", "buildUrl": null,
+              "code": { "linesOfCode": 19200, "files": 133, "languages": [ { "name": "C#", "lines": 12600, "files": 87 } ] },
+              "tests": null, "coverage": null, "complexity": null, "crap": null, "analysis": null }
+            """)!;
+
+        Assert.Null(build.Version);
+        Assert.Null(build.Commit);
+        Assert.Null(build.BuildUrl);
+        Assert.Equal("19,200 lines in 133 files", BuildText.Size(build.Code!));
+        Assert.Null(build.Tests);
+        Assert.Null(build.Coverage);
+        Assert.Null(build.Complexity);
+    }
+
     [Fact]
     public void TheLanguageBarNamesTheFiveLargestAndSumsTheRest()
     {

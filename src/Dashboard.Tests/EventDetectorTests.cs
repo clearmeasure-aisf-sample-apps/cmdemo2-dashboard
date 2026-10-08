@@ -98,6 +98,82 @@ public class EventDetectorTests
         Assert.Empty(Node(Seen(HealthState.Healthy, "2.4.14", uptime: 9000), Seen(HealthState.Healthy, "2.4.15", uptime: 20), isNode: false));
     }
 
+    private static NodeObservation Checked(params (string Name, string Status)[] entries) =>
+        Seen(HealthState.Healthy) with { Checks = entries.Length == 0 ? null : HealthDetailTests.Detail(entries) };
+
+    [Fact]
+    public void AnEntryOfTheHealthCheckThatChangesItsStateIsAnEventWithItsOwnWords()
+    {
+        var healthy = Checked(("API", "Healthy"), ("LlmGateway", "Healthy"));
+        var degraded = Checked(("API", "Healthy"), ("LlmGateway", "Degraded"));
+        var failed = Checked(("API", "Healthy"), ("LlmGateway", "Unhealthy"));
+
+        var slower = Assert.Single(Node(healthy, degraded));
+        var down = Assert.Single(Node(degraded, failed));
+        var back = Assert.Single(Node(failed, healthy));
+
+        Assert.Equal(new DashboardEvent(Now, EventKind.HealthCheck, EventLevel.Warning, "uat", "westus3", "ui: LlmGateway Healthy → Degraded: LlmGateway says degraded"), slower);
+        Assert.Equal((EventLevel.Problem, "ui: LlmGateway Degraded → Unhealthy: LlmGateway says unhealthy"), (down.Level, down.Text));
+        Assert.Equal((EventLevel.Good, "ui: LlmGateway Unhealthy → Healthy: LlmGateway says healthy"), (back.Level, back.Text));
+    }
+
+    [Fact]
+    public void TheFirstAnswerOfTheHealthCheckIsAnEventOnlyForAnEntryThatIsNotHealthy()
+    {
+        Assert.Empty(Node(Checked(), Checked(("API", "Healthy"), ("DataAccess", "Healthy"))));
+
+        var first = Node(Checked(), Checked(("API", "Healthy"), ("DataAccess", "Unhealthy"), ("LlmGateway", "Degraded")));
+
+        Assert.Equal(
+            [(EventLevel.Problem, "ui: DataAccess Unhealthy at the first check: DataAccess says unhealthy"), (EventLevel.Warning, "ui: LlmGateway Degraded at the first check: LlmGateway says degraded")],
+            first.Select(entry => (entry.Level, entry.Text)));
+    }
+
+    [Fact]
+    public void AnEntryThatIsNewIsAnEventOnlyWhenItIsNotHealthyAndOneThatIsGoneIsNone()
+    {
+        var before = Checked(("API", "Healthy"), ("Queue", "Degraded"));
+
+        Assert.Empty(Node(before, Checked(("API", "Healthy"), ("Mail", "Healthy"))));
+        var added = Assert.Single(Node(before, Checked(("API", "Healthy"), ("Queue", "Degraded"), ("Mail", "Unhealthy"))));
+
+        Assert.Equal((EventKind.HealthCheck, EventLevel.Problem, "ui: Mail Unhealthy, new in the health check: Mail says unhealthy"), (added.Kind, added.Level, added.Text));
+    }
+
+    [Fact]
+    public void TheSameStateInOtherWordsOrACheckWithoutEntriesIsNoEvent()
+    {
+        var before = Checked(("API", "Healthy"), ("LlmGateway", "Degraded"));
+        var reworded = Seen(HealthState.Healthy) with
+        {
+            Checks = HealthDetail.Parse("""{ "entries": [ { "name": "api", "status": "healthy" }, { "name": "LlmGateway", "status": "Degraded", "description": "Slower still: 9 s" } ] }""", Now),
+        };
+
+        Assert.Empty(Node(before, reworded));
+        Assert.Empty(Node(before, Checked()));
+        Assert.Empty(EventDetector.HealthChecks(before.Checks, null, "uat", "ui", "westus3", Now));
+    }
+
+    [Fact]
+    public void AnEntryWithoutWordsOrWithAStateThePageDoesNotKnowIsNamedByItsStateAlone()
+    {
+        var after = Seen(HealthState.Healthy) with { Checks = HealthDetail.Parse("""{ "entries": [ { "name": "Queue", "status": "Paused" } ] }""", Now) };
+
+        var unknown = Assert.Single(Node(Checked(("Queue", "Healthy")), after));
+
+        Assert.Equal((EventLevel.Info, "ui: Queue Healthy → Not known"), (unknown.Level, unknown.Text));
+    }
+
+    [Fact]
+    public void TheEntriesFollowTheStateTheyExplainAndAFrontDoorEndpointHasNone()
+    {
+        var before = Checked(("DataAccess", "Healthy"));
+        var after = Seen(HealthState.Unhealthy, status: 503) with { Checks = HealthDetailTests.Detail(("DataAccess", "Unhealthy")) };
+
+        Assert.Equal([EventKind.Health, EventKind.HealthCheck], Node(before, after).Select(entry => entry.Kind));
+        Assert.Equal([EventKind.Health], Node(before, after, isNode: false).Select(entry => entry.Kind));
+    }
+
     [Fact]
     public void AFailoverAndAFailbackAreEvents()
     {
@@ -242,6 +318,67 @@ public class EventDetectorTests
         Assert.Contains(recovery, entry => entry is { Kind: EventKind.Restart, Node: "westus3", Environment: "uat" });
         Assert.Contains(recovery, entry => entry is { Kind: EventKind.Serving, Text: "Failback: eastus2 → westus3. The primary is healthy again." });
         Assert.Same(events, monitor.Events);
+    }
+
+    [Fact]
+    public async Task TheMonitorWritesAnEntryThatChangesAndAChecksWithoutAnAnswerHidesNoChange()
+    {
+        const string Topology = """
+            { "environments": [ { "name": "uat", "deployables": [ { "name": "ui", "frontDoor": "https://fd-uat.example.net", "healthDetailPath": "/_healthcheck/detailed",
+                "nodes": [ { "name": "uat-west", "region": "westus3", "url": "https://uat-west.example.net" }, { "name": "uat-east", "region": "eastus2", "url": "https://uat-east.example.net" } ] } ] } ] }
+            """;
+        var gateway = "Healthy";
+        var handler = new StubHandler(request => request.RequestUri!.AbsolutePath != "/_healthcheck/detailed"
+            ? Optics.Answer(request)
+            : StubHandler.Answer(HttpStatusCode.OK, HealthDetailTests.Entries(("DataAccess", "Healthy"), ("LlmGateway", request.RequestUri.Host == "uat-west.example.net" ? gateway : "Healthy"))));
+        var monitor = Optics.Monitor(handler, _time, topology: Topology);
+        IEnumerable<string> Written() => monitor.Events.Newest.Select(entry => $"{entry.Environment} · {entry.Node} {entry.Text}");
+
+        // The first answer, every entry healthy: nothing to say.
+        await monitor.CheckAllAsync(ProbeKind.Health, CancellationToken.None);
+        Assert.Empty(Written());
+
+        // One entry of one node changes: one event, of that node.
+        gateway = "Degraded";
+        _time.Advance(TimeSpan.FromSeconds(30));
+        await monitor.CheckAllAsync(ProbeKind.Health, CancellationToken.None);
+        Assert.Equal(["uat · westus3 ui: LlmGateway Healthy → Degraded: LlmGateway says degraded"], Written());
+        Assert.Equal(HealthState.Healthy, monitor.Environments[0].Deployables[0].Nodes[0].State);
+
+        // Liveness reads no entries, and the next health check finds the entry as it was: neither is an event.
+        await monitor.CheckAllAsync(ProbeKind.Liveness, CancellationToken.None);
+        await monitor.CheckAllAsync(ProbeKind.Health, CancellationToken.None);
+        Assert.Single(Written());
+
+        // A change while the page read no entries is found by the next health check.
+        await monitor.CheckAllAsync(ProbeKind.Liveness, CancellationToken.None);
+        gateway = "Healthy";
+        _time.Advance(TimeSpan.FromSeconds(30));
+        await monitor.CheckAllAsync(ProbeKind.Health, CancellationToken.None);
+        Assert.Equal("uat · westus3 ui: LlmGateway Degraded → Healthy: LlmGateway says healthy", Written().First());
+        Assert.Equal(2, monitor.Events.Count);
+    }
+
+    [Fact]
+    public async Task AnEntryThatIsNotHealthyAtTheFirstCheckIsWrittenAfterTheStateOfItsNode()
+    {
+        const string Topology = """
+            { "environments": [ { "name": "uat", "deployables": [ { "name": "ui", "healthDetailPath": "/_healthcheck/detailed",
+                "nodes": [ { "name": "uat-west", "region": "westus3", "url": "https://uat-west.example.net" } ] } ] } ] }
+            """;
+        var handler = new StubHandler(request => request.RequestUri!.AbsolutePath switch
+        {
+            "/_healthcheck/detailed" => StubHandler.Answer(HttpStatusCode.ServiceUnavailable, HealthDetailTests.Entries(("API", "Healthy"), ("DataAccess", "Unhealthy"))),
+            "/_healthcheck" => StubHandler.Answer(HttpStatusCode.ServiceUnavailable, "Unhealthy"),
+            _ => Optics.Answer(request),
+        });
+        var monitor = Optics.Monitor(handler, _time, topology: Topology);
+
+        await monitor.CheckAllAsync(ProbeKind.Health, CancellationToken.None);
+
+        Assert.Equal(
+            ["ui: Unhealthy at the first check (HTTP 503)", "ui: DataAccess Unhealthy at the first check: DataAccess says unhealthy", "No healthy node: nothing can serve traffic."],
+            monitor.Events.Newest.Select(entry => entry.Text));
     }
 
     [Fact]

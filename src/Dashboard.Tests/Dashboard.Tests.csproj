@@ -5,7 +5,10 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!-- coverlet.collector: the Build's test run measures coverage with it (the collector "XPlat Code Coverage"), and
+       scripts/Write-BuildFacts.ps1 reads the Cobertura file it writes. -->
   <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.0" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.10.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />

@@ -69,6 +69,7 @@ public static class TopologyParser
         Uri? repository = null;
         Uri? delivery = null;
         Uri? cost = null;
+        DashboardInfo? dashboard = null;
         if (root.TryGetProperty("system", out var system) && system.ValueKind == JsonValueKind.Object)
         {
             slug = ReadText(system, "slug") ?? string.Empty;
@@ -76,9 +77,27 @@ public static class TopologyParser
             repository = ReadOptionalAddress(system, "repository", "system", errors);
             delivery = ReadOptionalAddress(system, "deliveryUrl", "system", errors);
             cost = ReadOptionalAddress(system, "costUrl", "system", errors);
+            dashboard = ReadDashboard(system);
         }
 
-        return new SystemInfo(slug, name ?? (slug.Length > 0 ? slug : "System"), repository, delivery, cost);
+        return new SystemInfo(slug, name ?? (slug.Length > 0 ? slug : "System"), repository, delivery, cost, dashboard);
+    }
+
+    /// <summary>
+    /// The optional <c>system.dashboard</c>: the dashboard itself, with the path of its own build facts. Null without
+    /// a <c>buildPath</c>, and the page then reads nothing about itself. Like a <c>buildPath</c> of a deployable it is
+    /// a courtesy: anything but an object with a path is "not there", never an error.
+    /// </summary>
+    private static DashboardInfo? ReadDashboard(JsonElement system)
+    {
+        if (!system.TryGetProperty("dashboard", out var dashboard) || dashboard.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        return ReadText(dashboard, "buildPath") is { } build
+            ? new DashboardInfo(ReadText(dashboard, "name") ?? DashboardInfo.DefaultName, AsPath(build))
+            : null;
     }
 
     private static List<EnvironmentInfo> ReadEnvironments(JsonElement root, List<string> errors)
