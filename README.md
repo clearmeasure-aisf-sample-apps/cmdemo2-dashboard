@@ -24,9 +24,10 @@ For each environment (tdd, uat, prod) and each deployable in it, the health view
   app that answers a detailed health check, one mark per thing it checks (its database, a gateway it calls), so an
   unhealthy tile says which of them failed (see "Health checks, entry by entry");
 - per deployable, a "Code" card (the build its primary node runs: commit, lines of code by language, tests, coverage,
-  complexity, CRAP, Qodana) and a "Delivery" card (deployed when, signed off by whom, lead time, how far behind the
-  first environment), each only when its source answers; and after the environments the "Code" card of the dashboard
-  itself, the build that serves the page (see "The dashboard's own build");
+  complexity, CRAP, Qodana) and a "Delivery" card (deployed when, signed off by whom, the last deployment a person
+  signed off, lead time, how far behind the first environment), each only when its source answers; and after the
+  environments the "Code" card of the dashboard itself, the build that serves the page (see "The dashboard's own
+  build");
 - under each environment's name, what it cost in Azure (the last complete day, seven days, the month so far, and the
   services that cost most), after the environments the same for what they share, and in the header for the whole
   system: a day old, and said so (see "Cost");
@@ -1054,7 +1055,9 @@ reading that fails later keeps the last good one.
   "environments": [ { "name": "prod", "deployables": [
     { "name": "ui", "version": "2.4.14", "deployedAt": "2026-10-06T03:37:00Z", "signedOffBy": "cm-ai-ops", "reason": "...",
       "commit": "<sha>", "commitAt": "...", "leadTimeHours": 5.2, "behindFirst": { "versions": 0, "days": 0 },
-      "deploymentsLast7Days": 4, "failedLast7Days": 0, "releaseUrl": "https://..." } ] } ],
+      "deploymentsLast7Days": 4, "failedLast7Days": 0, "releaseUrl": "https://...",
+      "lastPersonSignOff": { "version": "2.4.11", "by": "pat.morgan", "at": "2026-10-03T21:12:41Z", "reason": null,
+                             "releaseUrl": "https://..." } } ] } ],
   "failover": { "environment": "uat", "at": "2026-10-05T12:00:00Z", "seconds": 44 } }
 ```
 
@@ -1066,6 +1069,7 @@ The "Delivery" card of a deployable in an environment shows what is there:
 |---|---|
 | Deployed: the version (linked to `releaseUrl`) and how long ago, the exact time in the title. | `version`, `deployedAt` |
 | Signed off: by whom, and the reason. The first environment has no sign-off step, so its card has no such line. | `signedOffBy`, `reason` |
+| Last by a person: the newest successful deployment here whose sign-off a person answered, not a service account: its version (linked to its own `releaseUrl`), by whom, how long ago (the exact time in the title) and the note they gave, when they gave one ("2.4.11 by pat.morgan 2 d ago"). Automation signs off most deployments, and without this line its next one would take the person's sign-off off the card. It is there also when that deployment is the one the card shows as deployed (the note is then said once, in the line above); not when no person signed one off (`null` or absent), nor when the object names neither a version nor a person. | `lastPersonSignOff`: `version`, `by`, `at`, `reason`, `releaseUrl` |
 | Lead time: from the commit to this deployment ("5.2 h from commit 0a1b2c3 to this deployment"). | `leadTimeHours`, `commit`, `commitAt` |
 | Compared: with the first environment of the topology: "same as tdd", "2 versions, 3 days behind tdd". Versions are the distance in the project's list of releases; days are since both last ran the same release (absent when they never did). Not shown in the first environment. | `behindFirst` |
 | Last 7 days: "4 deployments, none failed"; a warning when one failed. | `deploymentsLast7Days`, `failedLast7Days` |
