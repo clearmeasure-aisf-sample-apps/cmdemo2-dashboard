@@ -275,8 +275,9 @@ The runtime view shows one environment as a C4 deployment diagram: the Azure sub
 tier's, and the Front Door's), the regions (primary, standby, and the region of the database and of the static
 sites), the App Service plans with their size, the web apps, the Front Door endpoint, the Azure SQL database, the
 dashboard's Static Web App and the browser, with the relationships between them. One button per environment selects
-the diagram; "Fit to width" fits it to the page (down to 70 % of its size, where the tiles' words are 8 px high;
-below that, and at its actual size, it scrolls sideways inside its own frame). The diagram is a light sheet in the
+the diagram, which opens fitted to the page (down to 70 % of its size, where the tiles' words are 8 px high; below
+that, and at its actual size, it scrolls sideways inside its own frame). The button at the right names what a press
+does: "Actual size" while the diagram is fitted, "Fit to width" while it is not. The diagram is a light sheet in the
 dark theme too. A system whose deployable declares what it depends on also has, outside the subscription, one box
 per dependency, with an arrow from each of the deployable's web apps.
 
@@ -1064,7 +1065,8 @@ Under the environment's name in the health view ("Availability") and under the d
 With `system.costUrl`, the page reads what the system cost in Azure: with the first round of checks and then every
 five minutes, as it reads the delivery facts. The deployment writes the address
 `https://raw.githubusercontent.com/<githubOrg>/<repository>/status/cost.json`; the workflow that publishes the
-delivery facts publishes this file next to them, hourly, from Azure Cost Management (`scripts/write-cost.ps1` of the
+delivery facts publishes this file next to them from Azure Cost Management (asked hourly until the last complete
+day is there in full, then every six hours; `scripts/write-cost.ps1` of the
 system repository). Until it has, the address answers 404 and no cost is shown. A reading that fails later keeps the
 last good one.
 
