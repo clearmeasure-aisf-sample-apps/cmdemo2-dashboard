@@ -789,7 +789,7 @@ reading the pinned versions (`PinnedVersions`, `PinnedVersionsReader`) and compa
 (`VersionAssessment`, `VersionSummary`), a node's telemetry with its process (`TelemetrySnapshot`, `ProcessVitals`),
 the trends (`Trend`, `Trends`), the events (`EventDetector`, `EventLog`), the build facts (`BuildInfo`, `BuildText`;
 the dashboard's own are `DashboardInfo` of the topology and `DashboardMonitor.DashboardBuild`), the traffic button's
-requests and its choice of environment (`TrafficPlan`),
+requests and its choice of environment (`TrafficPlan`) and what it counted (`TrafficCount`),
 the entries of a detailed health check (`HealthDetail`, `HealthDetailText`),
 the delivery facts (`DeliveryReport`, `DeliveryText`) with the hourly health reports (`HealthReports`,
 `AvailabilityText`), the cost (`CostReport`, `CostText`), the deployments in flight (`DeploymentsReport`,
@@ -917,6 +917,16 @@ response stays opaque. While it runs, the page checks every 10 s, and says so ne
 ("every 10 s while traffic runs") while that control names a longer interval; the control keeps the viewer's choice,
 which applies again when the traffic ends.
 
+The line next to the button counts every request sent as answered, failed (the browser reports a network failure),
+given up with no answer within 10 s, or on its way, so its numbers add up to the first (`TrafficCount`): "18 sent,
+18 answered; 51 s left.", and "107 sent, 99 answered, 8 on their way; 6 s left." when answers come late. An answer
+counts whatever its HTTP status is: the page cannot read an opaque response. The run is over after its last answer,
+not after its last request: once nothing more is sent the line says what it waits for ("119 sent, 99 answered, 20 on
+their way; waiting for their answers."), for 10 s at most, since a request is given up then. It ends with "Done: 119
+sent, 119 answered.", or with "Done: 119 sent, 109 answered, 10 with no answer within 10 s." when some answers did
+not come in time; the event of the end says the same ("Traffic ended: 119 sent, 119 answered"). A request given up
+may still have reached the app: the web app's own count on its tile says how many did.
+
 The panel's "Environment" starts on the environment the runtime view shows (`#runtime/uat`: uat) and follows it when
 the viewer selects another diagram; where the page has shown none (the health view), it is the first environment
 that has something to call. Once the viewer picks an environment in the panel, that choice stays, and nothing
@@ -977,7 +987,7 @@ the one before (`EventDetector`); nothing comes from a server's log, and a reloa
 | Deployment | A web app reports another version. Not for a Front Door endpoint, which answers for whichever node served. | "ui: 2.4.14 → 2.4.15, deployed" |
 | Serving region | At the end of a round, the node expected to serve changed: a failover, a failback, nothing serves, serves again. | "Failover: westus3 → eastus2. Primary westus3 is unreachable; eastus2 is expected to serve traffic." |
 | Pin | The version pinned in Git changed between two readings of `versions.json`, or of the deployable's own file (`pinUrl`). | "ui: pinned 2.4.14 → 2.4.15 in Git" |
-| Traffic | The traffic button was started, stopped or ran out. | "Traffic started: 2 requests a second for 60 s to ui at cmdemo2-uat-def456.z01.azurefd.net" |
+| Traffic | The traffic button was started, or its run ended: stopped or ran out, and no answer is on its way any more. | "Traffic started: 2 requests a second for 60 s to ui at cmdemo2-uat-def456.z01.azurefd.net" |
 | Cluster | Only with `cluster` in the topology, between two readings of its files and never at the first: the status file stopped answering or answers again; the collector stopped writing (the file became stale) or writes again; a node is no longer ready or is ready again; per pod one event a round at most: its restart count rose, or else it became unhealthy, or else it is ready again; Azure's verdict on the AKS service or its power state changed. A round names ten pods and counts the rest. | "ui in cmdemo3-tdd restarted (7 restarts): CrashLoopBackOff", "Node aks-…000000 is not ready", "The cluster's status file stopped answering: no answer within 10 s", "Azure's verdict on the AKS service: Available → Degraded" |
 
 The list is a `role="log"` region: additions are announced politely, and it scrolls inside its own frame. An event's
