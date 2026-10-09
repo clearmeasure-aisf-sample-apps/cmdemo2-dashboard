@@ -486,9 +486,12 @@ like any image, the page hides it and draws into its rectangle (`js/runtime.js`)
 (and when opened on its own) is neutral. The sizes are set in `deploy-staticwebapp.ps1`: a web app's slot is 232 by
 146 (the badge, seven lines 15 px apart and the history strip), and 232 by 161 for a deployable with
 `healthDetailPath` (an eighth line: the marks of its health check); a Front Door endpoint's 232 by 98; a database's,
-a static site's and a dependency's 232 by 46; a region's 190 by 22; a relationship's 144 by 34. The script draws as
-many lines as a slot holds, so a newer page on an older diagram loses lines, never its place (the marks are the last
-line: a diagram from before them loses only them), and it spreads the 30 bars of the history strip over the slot's
+a static site's and a dependency's 232 by 46; a region's 190 by 22; a relationship's 144 by 34. A node a deployment
+changes (every node with a `deployable`: a web app, a Front Door endpoint, a static site) is 30 px taller than that,
+two rows for its activity lines ("Deployments in flight" below): 232 by 176 or 191, 128 and 76. The script draws as
+many lines as a slot holds, so a newer page on an older diagram loses lines, never its place (the activity lines are
+the last lines, after the marks: a diagram from before them loses only them, and shows the dot alone until the
+dashboard is deployed again), and it spreads the 30 bars of the history strip over the slot's
 width. The widths are what the widest line needs: every pixel of them is paid for by the scale of the whole diagram
 (a slot of 250 and a number line of 160 made cmdemo2's diagram wider than the page at its smallest scale).
 
@@ -524,7 +527,8 @@ The payload, as JSON:
 
 Node states `healthy`, `unhealthy`, `unreachable`, `checking`, `neutral`; region states `serving`, `standby`, `down`,
 `checking`, `neutral`; relationship states `active`, `idle`, `down`, `checking`, `neutral`; line tones `strong`,
-`plain`, `muted`, `serving`, `ok`, `warn`, `insync`, `differs`, `unknown`. `number` is absent for a relationship
+`plain`, `muted`, `serving`, `ok`, `warn`, `insync`, `differs`, `unknown`, and for an activity line its kind:
+`waiting`, `deploying`, `queued`, `frozen`, `freeze`, `deployed`, `failed`, `canceled`. `number` is absent for a relationship
 without a number line, and "–" where no node reports calls per minute. The script reports every alias or id of the
 payload that the SVG lacks, and the view names them.
 
@@ -545,7 +549,10 @@ stop and Enter on it opens it. A tile's `deployment` is the mark of a deployment
 `state` `executing`, `queued`, `waiting` or `ended` (the dot's shape), `title` (the sentence; one line per deployment
 when the deployable has more than one, and the first gives the shape) and `link` (the task in Octopus Deploy; absent
 when the file gives no address). The script draws it in the corner of the node's slot, or of its box for a node
-without one.
+without one. The activity lines of the node's deployable are ordinary lines, the tile's last: their `tone` is their
+kind, which gives them their icon (the shapes of the dot for `waiting`, `deploying` and `queued`, a snowflake for
+`frozen` and `freeze`, a check, a cross and a bar for `deployed`, `failed` and `canceled`), and their words are a
+link to the task where the file gives its address.
 
 ## The cluster view
 
@@ -1260,10 +1267,22 @@ minutes and on demand (`scripts/write-deployments.ps1` of the system repository)
 ```json
 { "generated": "2026-10-08T04:22:24Z", "system": "cmdemo2", "octopus": "https://example.octopus.app/app#/Spaces-1",
   "deployments": [
+    { "project": "cmdemo2-ui", "environment": "prod", "release": "2.4.42", "state": "waiting",
+      "since": "2026-10-08T02:00:00Z", "startedBy": "jeffrey", "url": "https://...",
+      "waitsFor": { "kind": "sign-off", "title": "Sign-off", "since": "2026-10-08T02:00:40Z", "responsible": "cmdemo2 approvers" } },
     { "project": "cmdemo2-ui", "environment": "uat", "release": "2.4.43", "state": "executing",
-      "since": "2026-10-08T04:22:07Z", "url": "https://example.octopus.app/app#/Spaces-1/tasks/ServerTasks-1" },
+      "since": "2026-10-08T04:22:07Z", "startedBy": "ai-ops", "url": "https://example.octopus.app/app#/Spaces-1/tasks/ServerTasks-1" },
     { "project": "cmdemo2-ui", "environment": "tdd", "release": "2.4.43", "state": "succeeded",
-      "since": "2026-10-08T04:15:00Z", "finished": "2026-10-08T04:20:00Z", "url": "https://..." } ] }
+      "since": "2026-10-08T04:15:00Z", "finished": "2026-10-08T04:20:00Z", "startedBy": "ai-ops", "url": "https://..." } ],
+  "recent": [
+    { "project": "cmdemo2-ui", "release": "2.4.43", "environment": "tdd", "result": "succeeded",
+      "finished": "2026-10-08T04:20:00Z", "startedBy": "ai-ops", "url": "https://..." },
+    { "project": "cmdemo2-ui", "release": "2.4.41", "environment": "prod", "result": "failed",
+      "finished": "2026-10-06T15:02:11Z", "startedBy": "jeffrey", "url": "https://..." } ],
+  "freezes": [
+    { "name": "prod weekend", "from": "2026-10-10T00:00:00Z", "to": "2026-10-12T00:00:00Z", "active": false,
+      "environments": [ "prod" ], "projects": [ "cmdemo2-ui" ] } ],
+  "missing": [] }
 ```
 
 | Field | What it is |
@@ -1276,10 +1295,24 @@ minutes and on demand (`scripts/write-deployments.ps1` of the system repository)
 | `since` | When it started, or when it was queued while it has not started. |
 | `finished` | When it ended; absent while it has not. |
 | `url` | The task in Octopus Deploy. |
+| `startedBy` | Who started it, as Octopus Deploy names the account; an e-mail address is cut at the @. Absent when Octopus does not say, or the system could not read it. |
+| `waitsFor` | Only while `state` is `waiting`: `kind` (`sign-off`, or `guided failure` for the question Octopus asks after a step failed), `title` (Octopus's title of it), `since`, and `responsible`: the person who took it, otherwise the teams Octopus names (empty when the system could not read their names). |
+| `recent[]` | The last deployment that ended of each project in each environment, the last one first: `project`, `release`, `environment`, `result` (`succeeded`, `failed`, `canceled`), `finished`, `startedBy`, `url`. It stays after the half hour of `deployments`. |
+| `freezes[]` | The deployment freezes of the Octopus instance that cover a project of the system now or within 72 hours: `name`, `from`, `to`, `active` (in force when read), `environments` and `projects` (names). |
+| `missing[]` | The parts the system could not read: `recent`, `freezes`, `startedBy`, `responsible`. A call the system's account may not make fails nothing there: deployment freezes belong to the instance, and the account has rights in its own space. An empty `freezes` that is not named here says that no freeze covers the system. |
+
+`startedBy`, `waitsFor`, `recent`, `freezes` and `missing` have the names and the words of the fleet's `activity`
+(the kit's `docs/fleet.md`), which says the same facts about every system on the fleet's dashboard.
 
 The file must be a JSON object with a `deployments` list. An entry without `project`, `environment`, `release` or
 `state` is left out; a time that does not parse is no time; an address that is not an absolute http(s) address is no
-link; unknown fields are ignored.
+link; unknown fields are ignored. A `recent` entry without a project, an environment, a release, a result or the
+time it ended, and a freeze without a name or the time it ends, are left out too.
+
+**An older file, and an older page.** A file from before `recent`, `freezes` and `missing` (a system that has not
+taken the newer `write-deployments.ps1` yet) is drawn exactly as before them: the dots and the sentences, and not a
+word more. The page tells such a file by the absence of all three lists. A page from before them ignores the new
+fields, as it ignores every field it does not know.
 
 **What is marked.** A deployment in flight (`queued`, `executing`, `waiting`), for as long as the file has it; one
 that ended, for ten minutes after `finished` (by the browser's clock) and then no more, so a deployment of a few
@@ -1296,6 +1329,7 @@ environment in full:
 | `queued` | cmdemo2-ui 2.4.43 is queued for uat |
 | `executing` | deploying cmdemo2-ui 2.4.43 to uat |
 | `waiting` | cmdemo2-ui 2.4.43 waits for a sign-off in uat |
+| `waiting`, with `waitsFor.kind` `guided failure` | cmdemo2-ui 2.4.43 asks what to do after a failed step in uat |
 | `succeeded` | cmdemo2-ui 2.4.43 reached uat 5 min ago |
 | `failed` | cmdemo2-ui 2.4.43 failed in uat 5 min ago |
 | `canceled` | cmdemo2-ui 2.4.43 was canceled in uat 5 min ago |
@@ -1304,6 +1338,37 @@ environment in full:
 The age is minutes under an hour ("5 min", and "1 min" at least), hours under two days ("5 h"), then days ("3 d").
 The tooltip of a mark in flight adds for how long it has been so ("deploying cmdemo2-ui 2.4.43 to uat (3 min so
 far)").
+
+**What the file says more** follows a mark's sentence, quieter, wherever the mark is a line (under an environment's
+name, on a tile of the health view, under the runtime view's title), and is in its tooltip: "the sign-off is with
+cmdemo2 approvers; asked 2 h ago; started by jeffrey", "started by ai-ops". Octopus's title of the question is quoted
+when it says more than the kind does ("the sign-off "Approve the release to production" is with pat"). Nothing
+follows where the file says none of it.
+
+**The activity lines** say in words what is happening and what just happened, the most urgent first:
+
+| Kind | On a node of the runtime view (36 characters at most, then an ellipsis; the tooltip has it in full) | Under an environment's name |
+|---|---|---|
+| `waiting` | 2.4.43 waits for cmdemo2 approvers; without a name: 2.4.43 waits for a sign-off, 2 h; after a failed step: 2.4.43 failed a step: pat decides, or 2.4.43 failed a step and waits | the mark, with what the file says more |
+| `deploying` | deploying 2.4.44, 3 min, by ai-ops | the mark |
+| `queued` | 2.4.44 queued, 3 min (a state the page does not know: 2.4.44: paused) | the mark |
+| `frozen` | frozen until Sun 19:00: prod weekend | deployment freeze prod weekend: cmdemo2-ui frozen until Sun 19:00, and 1 more |
+| `freeze` | freeze from Sat 19:00: prod weekend | deployment freeze prod weekend: cmdemo2-ui frozen from Sat 19:00 until Sun 19:00 |
+| `deployed`, `failed`, `canceled` | 2.4.43 deployed 5 h ago by ai-ops; 2.4.43 failed 5 h ago by ai-ops; 2.4.43 canceled 5 h ago | last: cmdemo2-ui 2.4.43 reached uat 5 h ago, started by ai-ops (failed in, was canceled in) |
+
+A node carries two lines at most, of its deployable in the shown environment (the project `<slug>-<deployable>`): so
+a node whose deployment waits for a person in an environment that is frozen says both, and one where nothing is in
+flight and no freeze is near says the last deployment that ended. They do not name the deployable or the
+environment, because the node is both. Under an environment's name the marks come first, as before, then two lines at most:
+the freeze that covers the environment (the one in force before the one that comes; the tooltip names every one, with
+the projects and the times), and the last deployment to it that ended, unless a mark already says that one. A freeze
+is in force, coming or over by the browser's clock: one that begins more than 72 hours from now is not named, one
+that has ended is gone, whatever the file's `active` says (it decides only for a freeze without a `from`). A time
+near now is short and in the viewer's time zone: the time of day on the same day, the day of the week within a week,
+then the date. A line is a link to its task in Octopus Deploy where the file gives the address; a freeze has none.
+An icon stands before each line and is never the only sign: the dot's shapes for what is in flight, a snowflake for
+a freeze (thin while it only comes), a check, a cross and a bar for the last deployment; a deployment that failed is
+in the yellow of a warning on a node and the red of words on the page.
 
 **The dot.** A mark is a dot and its sentence. The dot's colour is the marker's own, the sky blue of Clear Measure's
 logo, which is none of the states of health, and it is never the only sign: the shape says the state, and the sentence says it in words.
@@ -1319,11 +1384,12 @@ logo, which is none of the states of health, and it is never the only sign: the 
 
 | Where | What |
 |---|---|
-| Health, under an environment's name | Every mark of the environment, one line each: the dot and the sentence, the sentence a link to the task (`url`). First under the name, above the cost and the availability. |
+| Health, under an environment's name | Every mark of the environment, one line each: the dot and the sentence, the sentence a link to the task (`url`), and what the file says more. Then the activity lines of the environment: a deployment freeze, and the last deployment that ended. First under the name, above the cost and the availability. |
 | Health, on a tile | The marks of the tile's deployable in its environment, the same lines, under the tile's chips: on the Front Door tile and on every node's. The project `<slug>-<deployable>` is the deployable `<deployable>` of the topology; the system's own project and a project the topology does not list are on no tile, only under the environment's name. |
-| Runtime, under the title | Every mark of the shown environment, as in the health view: the system's own release marks the environment here, and so does a project the diagram draws no node of. |
+| Runtime, under the title | Every mark and the activity lines of the shown environment, as in the health view: the system's own release marks the environment here, and so does a project the diagram draws no node of. |
 | Runtime, the environments' buttons | A dot (the shape of its first mark) on every environment with a mark in flight, with the sentences as its tooltip: uat shows as deploying while prod is looked at. What only ended puts no dot there. |
 | Runtime, on a node | A dot in the corner of the tile of every node the manifest draws for the deployable (`deployable` of a node of `runtime/<env>.json`), also one the topology does not list, such as the dashboard's static site or a node an application recorded for itself. A dependency is not marked: nobody deploys it here. With more than one mark the first gives the shape, and the tooltip has all. |
+| Runtime, in a node's tile | The activity lines of the node's deployable, two at most, after the tile's own lines, where the diagram has rows for them (a diagram rendered by a deployment from before them has none on a full tile, and shows the dot alone). The same nodes as the dot. |
 | Runtime, the legend | The four shapes, only with `system.deploymentsUrl`. |
 
 **How fresh.** Minutes, not seconds, and the tooltip of every list says so, with the time of `generated`: a
