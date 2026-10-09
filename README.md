@@ -40,7 +40,7 @@ For each environment (tdd, uat, prod) and each deployable in it, the health view
   health check that changed, restarts, deployments, failovers, pins, traffic, and for a system with a cluster what
   changed in it);
 - where the topology has a link for it, every number and name leads to its place in the Azure portal or in Octopus
-  Deploy;
+  Deploy; in the runtime view every box leads to what it stands for, by a click anywhere on it (see "Links");
 - which region is expected to serve the traffic, a "Failed over to <region>" banner when the primary is not healthy
   but a standby is, and whether the Front Door endpoint agrees;
 - the version the last deployment pinned in Git next to the versions the nodes run ("Pinned 2.4.7. In sync: all 2
@@ -53,6 +53,32 @@ For each environment (tdd, uat, prod) and each deployable in it, the health view
 The browser holds no secret: it reads public addresses only (the nodes' health, detailed health, version, telemetry
 and build endpoints and public files on GitHub), and the links to the Azure portal, Octopus Deploy and GitHub are
 plain links that ask the viewer to sign in there.
+
+## How it looks, and why
+
+The page wears the two brands the fleet health dashboard wears (`cmfleet-dashboard`, "How it looks, and why"), so a
+system's dashboard and the fleet's read as one family (Jeffrey Palermo, 2026-10-09: "They need to have same branding
+as fleet dashboard and look like they belong with clear measure and octopus").
+
+| Part | From | In the page |
+|---|---|---|
+| Navy surfaces, one line colour, cards with a thin border and a 4 px radius, no shadow; blue links | Octopus Deploy's dark screens | `--page` `#111a23`, `--bar` `#1f303f`, `--raised` `#1f303f`, `--hover` `#24394b`, `--hairline` `#2e475d`, `--border-strong` `#557c9e`, `--ink` `#f4f6f8`, `--ink-secondary` `#9fb3c5`, `--link` `#87bfec` in `wwwroot/css/app.css` |
+| Green for healthy, orange for what needs attention, red for what failed | Octopus | `--good` `#00ab62` (`#00874d` under white words), `--serious` `#f58d3a`, `--critical` `#d63d3d` (`#ff7a7a` for red words on the page) |
+| The logo in the bar across the top, and its mark as the page's icon | Clear Measure | `wwwroot/clear-measure-logo-white.png`, `wwwroot/favicon.png`; the bar is part of `index.html`, so it is there while the application loads |
+| The navy of the diagram's boxes, the deep navy of what the page does not ask, the primary blue of what is selected or focused and of the diagram's frames and arrows, the yellow of what differs or warns in a tile, the sky blue of a deployment in flight | Clear Measure's palette as clearmeasure.com carries it | `--cm-blue` `#004b87`, `--cm-deep` `#043e6c`, `--cm-primary` `#0085ca`, `--cm-yellow` `#eecb1a`, `--cm-sky` `#24abe1`, `--cm-light-blue` `#cfeaff` |
+| Headings, the tabs and the bar's label in Jost (weights 500 to 700; then Futura, Century Gothic, Trebuchet MS) | Clear Measure's site is set in Futura and loads Jost as the face a browser can get | `--display` |
+| Everything else in Roboto (400, 500, 700): text, numbers, names of resources | Octopus's type | `--font`, `--font-data`; only `code` keeps a fixed pitch |
+
+There is one theme, the dark one of the screen it mimics: no light values and no `prefers-color-scheme`. A colour
+keeps what it meant before: the states (healthy, unhealthy, unreachable, pending), the mark of a deployment and the
+five colours of the language bar each took the nearest colour of the two brands. Words are at least 4.5 to 1 on what
+they stand on: white on the navy box is 8.9 to 1, the yellow of a line that differs 5.8 to 1 on it, the muted ink 7.9
+to 1 on the page, and the word of a badge (Octopus's strong green, its red) 4.6 to 1 on the badge's white. A selected
+button is the navy with the primary blue as its edge, because white on the primary blue alone is 4.0 to 1.
+
+The two faces come from Google Fonts (`index.html`); without them the page reads in the fallbacks. Where a brand
+guide says otherwise, the variables at the top of `wwwroot/css/app.css` are the one place to change, and the
+diagram's colours are under "The diagram's colours" there.
 
 Everything beyond the health checks is optional. A source that is absent or cannot be read (an older app without the
 endpoint, a file that is not published yet, a topology without the field) is never an error: its element is not
@@ -303,8 +329,9 @@ sites), the App Service plans with their size, the web apps, the Front Door endp
 dashboard's Static Web App and the browser, with the relationships between them. One button per environment selects
 the diagram, which opens fitted to the page (down to 70 % of its size, where the tiles' words are 8 px high; below
 that, and at its actual size, it scrolls sideways inside its own frame). The button at the right names what a press
-does: "Actual size" while the diagram is fitted, "Fit to width" while it is not. The diagram is a light sheet in the
-dark theme too. A system whose deployable declares what it depends on also has, outside the subscription, one box
+does: "Actual size" while the diagram is fitted, "Fit to width" while it is not. The diagram is drawn on the page's
+own navy: PlantUML renders it for a white sheet, and the style sheet gives every shape and word of it the page's
+colours, so a diagram a deployment rendered before needs no new render. A system whose deployable declares what it depends on also has, outside the subscription, one box
 per dependency, with an arrow from each of the deployable's web apps. The database is drawn in an environment that
 has one. An application that brings its own runtime ("An application that brings its own runtime", above) is drawn
 outside the subscription too, in a boundary of its own, because the deployment does not know where it runs: its
@@ -326,8 +353,8 @@ diagram in place:
 
 | Element | What it shows |
 |---|---|
-| Web app, Front Door endpoint | The box's colour and border by state (Healthy, Unhealthy, Unreachable, Checking), and a tile: the state's badge with its word, HTTP status and latency, the version, the last 30 checks. A web app also shows its version next to the pinned one ("pinned 2.4.21: in sync", "differs from pinned 2.4.21"), its own numbers where it reports them ("12 req/min · p95 85 ms" with the trend of the requests, "0 errors · 0 exceptions/min", "CPU 3.2 % · 412 MB · 2 in flight" with the trend of the CPU, "up 2 h" or "restarted 3 min ago") and its role ("primary: serves traffic", "standby: ready, no traffic"; the only node of a deployable without a Front Door endpoint has no role: "serves traffic", "not serving"), and last, where it answers a detailed health check, one small mark per entry with the summary in words ("8 checks healthy", "LlmGateway degraded", "2 of 8 checks not healthy"; see "Health checks, entry by entry"); the endpoint shows where it routes ("routes to eastus2 (failed over)") and whether it agrees with the web apps. |
-| Region of web apps | A mark with words: "serving traffic" (green frame), "standby: ready", "not serving" (red frame), by the same serving decision as the health view's banner. A region of the database and the static sites has a note in slate, in italics ("database: reachable; static sites: not probed"). |
+| Web app, Front Door endpoint | The box's colour and border by state (Healthy: the navy box in a green border; Unhealthy: a red wash in a dashed red border; Unreachable: the line colour in a dotted border; Checking: dashed), and a tile: the state's badge with its word, HTTP status and latency, the version, the last 30 checks. A web app also shows its version next to the pinned one ("pinned 2.4.21: in sync", "differs from pinned 2.4.21"), its own numbers where it reports them ("12 req/min · p95 85 ms" with the trend of the requests, "0 errors · 0 exceptions/min", "CPU 3.2 % · 412 MB · 2 in flight" with the trend of the CPU, "up 2 h" or "restarted 3 min ago") and its role ("primary: serves traffic", "standby: ready, no traffic"; the only node of a deployable without a Front Door endpoint has no role: "serves traffic", "not serving"), and last, where it answers a detailed health check, one small mark per entry with the summary in words ("8 checks healthy", "LlmGateway degraded", "2 of 8 checks not healthy"; see "Health checks, entry by entry"); the endpoint shows where it routes ("routes to eastus2 (failed over)") and whether it agrees with the web apps. |
+| Region of web apps | A mark with words: "serving traffic" (green frame), "standby: ready" (dashed frame), "not serving" (dashed red frame), by the same serving decision as the health view's banner. A region of the database and the static sites has a note in slate, in italics ("database: reachable; static sites: not probed"). |
 | Front Door to an origin | Solid and green while it carries the traffic, dotted grey while idle, dashed red when the origin is not healthy: a failover is the green line moving from priority 1 to priority 2. |
 | Web app to the database | Green from the web app that serves, dotted from the others. |
 | Number line of a relationship | Calls per minute of the last minute, in a solid frame, as the web apps count them: browser to Front Door (the sum of its origins' requests from Front Door), Front Door to an origin (its requests from Front Door; Front Door's health probes next to the role), web app to database (the SQL commands of its requests, with the background ones next to the role, "app queries · 55 background"; all SQL commands for an app that does not tell them apart), web app to dependency (the web app's outgoing HTTP calls, `http.perMinute`, when the web app has exactly one dependency; a dash, "not counted apart", when it has more, because the app counts them as one number). Next to the number, its trend over the last checks of this page. A dashed frame with "–" where no web app reports a number (no `telemetryPath`, or an app without the endpoint). |
@@ -335,8 +362,9 @@ diagram in place:
 | Dependency (a box outside the subscription) | The browser does not call it; the entry of the web apps' detailed health check that the system names for it says its state. "Reachable" (healthy) when that entry is Healthy on a web app that passes its health check, with the entry's own words as the line ("Chat client is not configured"), or "westus3 reports it degraded" when another web app says otherwise; "Degraded" or "Unhealthy" (drawn as unhealthy) with the entry's words when no web app reaches it; and neutral with the reason otherwise: "Not known" (no web app answers the detailed health check, or it has no entry of that name), "Not confirmed" (the entry is healthy only on a web app that fails its own health check), "Not probed" (the system names no entry for it, or the probe is Liveness, which reads no entries). |
 | Web app to a dependency | Green from the web app that serves, dotted from the others, like the line to the database. |
 | Links | Where the topology has a link (see "Links"): a web app's badge (Live Metrics), its name (the web app in the portal), its version (the release in Octopus Deploy, or else the commit of its build), its requests (Performance) and its errors (Failures); the Front Door endpoint's and the database's name; the numbers on the arrows (Performance, the dependency calls, the requests in Logs). They are real `a` elements: underlined, in the order of the keyboard, each with a title that says where it goes. |
+| A box | Every box leads to what it stands for: its name is a link, and a click anywhere else on the box opens the same address in a new tab (see "Links", "Every box of the runtime view"). The frames too: the subscription, a resource group, the Front Door profile, a plan, a region. A click on a link inside a box (a badge, a number, the mark of a deployment) is that link's own. The box shows the pointer and lights up under it. |
 | Static site | Neutral, "Not probed": the dashboard does not check itself. The static site that serves the page says "This page". |
-| Mark of a deployment | With `system.deploymentsUrl`: a small dot in the corner of the tile of every node whose deployable is being deployed to the shown environment (its web apps, its Front Door endpoint, the dashboard's static site), on a white disc so it reads on a box of any state. Its shape says the state, its tooltip the sentence, and it is a link to the task in Octopus Deploy where the file gives its address (see "Deployments in flight"). The node keeps its state: a deployment is no state of health. |
+| Mark of a deployment | With `system.deploymentsUrl`: a small dot in the corner of the tile of every node whose deployable is being deployed to the shown environment (its web apps, its Front Door endpoint, the dashboard's static site), in the logo's sky blue on a dark disc in a white ring, so it reads on a box of any state. Its shape says the state, its tooltip the sentence, and it is a link to the task in Octopus Deploy where the file gives its address (see "Deployments in flight"). The node keeps its state: a deployment is no state of health. |
 
 A state is never colour alone: the badge has an icon and a word, the regions a word, the lines differ in dash and
 width. Hover a node or a line for its details.
@@ -385,7 +413,12 @@ The manifest maps each element's alias to what the browser knows, so the page ne
     { "alias": "dep_ui_LLM_gateway", "qualifiedName": "dep_ui_LLM_gateway", "kind": "dependency", "deployable": "ui",
       "name": "LLM gateway", "healthCheck": "LlmGateway", "dependencyKind": "external", "url": null }
   ],
-  "regions": [ { "alias": "region_primary", "qualifiedName": "sub.rg_tier.region_primary", "name": "westus3", "roles": [ "primary" ] } ],
+  "regions": [ { "alias": "region_primary", "qualifiedName": "sub.rg_tier.region_primary", "name": "westus3", "roles": [ "primary" ],
+                 "links": { "resources": "https://portal.azure.com/#@<tenant>/blade/HubsExtension/ArgQueryBlade/query/..." } } ],
+  "frames": [
+    { "alias": "rg_tier", "qualifiedName": "sub.rg_tier", "kind": "resourceGroup", "name": "rg-cmdemo2-nonprod",
+      "links": { "portal": "https://portal.azure.com/#@<tenant>/resource/subscriptions/<id>/resourceGroups/rg-cmdemo2-nonprod/overview" } }
+  ],
   "edges": [
     { "id": "fd_ui-to-app_ui_primary", "from": "fd_ui", "to": "app_ui_primary", "kind": "origin", "priority": 1 },
     { "id": "app_ui_primary-to-sqldb", "from": "app_ui_primary", "to": "sqldb", "kind": "sql" },
@@ -419,6 +452,11 @@ The manifest maps each element's alias to what the browser knows, so the page ne
   system's own words (`external`). It comes from `deployables[].dependencies` of `system.json`, a list of
   `{ "name": "LLM gateway", "healthCheck": "LlmGateway", "kind": "external" }`; a system without it has no such node
   and no such relationship, and its diagram is as before.
+- **Frames and links**: `frames` lists every frame that is no region, with its alias, its `kind` (`subscription`,
+  `resourceGroup`, `frontDoorProfile`, `plan`, `cluster`, `runtime`) and its name. A frame, a region and a node may
+  have `links`, a map of one key to an https address: where the box leads when the topology has no link for it (see
+  "Links", "Every box of the runtime view"). Both are optional: a manifest from before them is drawn as before, and
+  anything in `links` that is no https address is left out.
 - **Addresses**: `url` is the address the page checks (web app, Front Door endpoint: the same as in `topology.json`,
   which is how a node finds its checks) or, for a static site, the dashboard's address where the deployment knows it
   (its own environment's); `null` for the database, which the browser cannot probe, for a Front Door endpoint that
@@ -475,7 +513,9 @@ The payload, as JSON:
                "link": { "href": "https://...", "title": "Live Metrics ..." }, "nameLink": { "href": "https://...", "title": "The web app ..." },
                "deployment": { "state": "executing", "title": "deploying cmdemo2-ui 2.4.43 to uat (3 min so far)",
                                "link": { "href": "https://...", "title": "..." } } } ],
-  "regions": [ { "alias": "region_primary", "state": "serving", "label": "serving traffic" } ],
+  "regions": [ { "alias": "region_primary", "state": "serving", "label": "serving traffic",
+                 "nameLink": { "href": "https://...", "title": "The resources in westus3, a query in Azure Resource Graph Explorer (...)" } } ],
+  "names": [ { "alias": "rg_tier", "nameLink": { "href": "https://...", "title": "The resource group rg-cmdemo2-nonprod in the Azure portal (...)" } } ],
   "edges": [ { "id": "fd_ui-to-app_ui_primary", "state": "active", "number": "10", "unit": "calls/min",
                "text": "first, while healthy", "title": "...",
                "link": { "href": "https://...", "title": "Performance ..." }, "trend": { "points": [ 0, 1 ], "title": "..." } } ]
@@ -489,14 +529,19 @@ without a number line, and "–" where no node reports calls per minute. The scr
 payload that the SVG lacks, and the view names them.
 
 Optional in the payload, and absent where there is nothing to say: `link` (a tile's badge, a relationship's number)
-and `nameLink` (the node's name, which PlantUML drew: the script wraps it), each `{ href, title }`; a line's `parts`
+and `nameLink` (the name of a node or a region, which PlantUML drew: the script wraps it), each `{ href, title }`;
+`names`, the boxes that have a name and nothing else to update (the frames that are no region, and the browser),
+each with its `nameLink`; a line's `parts`
 (the same words as `text` in pieces, present only when a piece has a `link`); `trend` on a line or a relationship
 (`points` are heights from 0 to 1, oldest first, on a scale from zero to the largest reading; `title` is the same in
 words); a line's `marks`, one per entry of the node's detailed health check (`state` `healthy`, `degraded`, `failed`
 or `unknown`, drawn before the line's words as a check, a warning triangle, a cross or dots, each with its `title`
 as tooltip and accessible name; eight at most, those that are not healthy first). The script draws a link as an `a`
 element (new tab, `rel="noopener"`, its own `title`) and gives the focus back to the link that had it when an update
-redraws the tile. A tile's `deployment` is the mark of a deployment of the node's deployable to the shown environment:
+redraws the tile. A box whose name is a link is one a click opens: the script listens once on the diagram, and a
+click that is not on a link opens the address of the name link of the box under it (`window.open`, a new tab,
+`noopener`); it adds no second link and no stop in the order of the keyboard, where the name link is the box's
+stop and Enter on it opens it. A tile's `deployment` is the mark of a deployment of the node's deployable to the shown environment:
 `state` `executing`, `queued`, `waiting` or `ended` (the dot's shape), `title` (the sentence; one line per deployment
 when the deployable has more than one, and the first gives the shape) and `link` (the task in Octopus Deploy; absent
 when the file gives no address). The script draws it in the corner of the node's slot, or of its box for a node
@@ -679,6 +724,27 @@ destination asks for a sign-in: the page holds no credential and calls none of t
 | `cluster.links` | `portal` | The AKS cluster in the Azure portal. | "AKS cluster in the Azure portal" in the cluster view's "AKS service" card. |
 | | `workloads` | The cluster's workloads in the Azure portal. | "Workloads in the Azure portal" next to the cluster view's "Pods". |
 
+### Every box of the runtime view
+
+In the runtime view a box leads to what it stands for. A web app, a Front Door endpoint and the database take the
+link of the table above; every other box takes its link from the diagram's manifest (`runtime/<env>.json`, `links`
+of a frame, a region or a node), which the same deployment writes:
+
+| Box | Key | It leads to |
+|---|---|---|
+| The subscription, a resource group, the Front Door profile, an App Service plan, a Static Web App; in a cluster the AKS cluster and a Static Web App next to it | `portal` | The resource's page in the Azure portal, from its id (`/subscriptions/<id>`, `.../resourceGroups/<name>`, `.../Microsoft.Cdn/profiles/<profile>`, `.../Microsoft.Web/serverfarms/<plan>`, `.../Microsoft.Web/staticSites/<site>`, `.../Microsoft.ContainerService/managedClusters/<cluster>`). |
+| A region of the system | `resources` | The resources of the tier's resource group in that region, a query in Azure Resource Graph Explorer: a region is no resource and has no page of its own. |
+| A namespace's frame (a cluster) | `namespaces` | The cluster's namespaces in the Azure portal. |
+| SQL Server's StatefulSet and a static site in a cluster | `workloads` | The cluster's workloads in the Azure portal. |
+| The boundary of an application with its own runtime | `project` | Its project in Octopus Deploy: the system knows none of its resources. |
+| The browser; the public address and the nodes of an application with its own runtime | `site` | The address itself: for the browser, the first public address the diagram draws an arrow to. |
+
+A box with several keys leads to the first of this order. Two kinds of box have no link, because the system knows no
+address for them: a dependency (`deployables[].dependencies` names it and its health check, not where it is) and the
+region an application with its own runtime reported. Without `azure.subscriptionId` in `system.json` no resource has
+an id, and only the `site` and `project` links are written. The ids are public data of the system, as the links of
+`topology.json` are; the portal asks the viewer to sign in.
+
 Two links need no entry, because the page builds them from what it reads: a web app's **version** leads to its
 release in Octopus Deploy (`projectUrl` + `/deployments/releases/<version>`), or else, when its build reports that
 version, to the commit (`commitUrl` of the build endpoint); a Front Door endpoint's version is no link, since it
@@ -801,8 +867,9 @@ grouping and the sums (`ClusterGroups`, `ClusterTotals`), the words and units (`
 (`ClusterEventDetector`). `HttpClient` and `TimeProvider` are injected, so the tests run them with a stub handler and
 fake time.
 
-There is no external dependency at run time: no CDN, no web font, no CSS framework. The style sheet is
-`wwwroot/css/app.css` and follows the viewer's light or dark preference.
+There is no CDN and no CSS framework. The style sheet is `wwwroot/css/app.css`, with one theme (see "How it looks,
+and why"); the one thing the page loads from elsewhere is its two faces, from Google Fonts, and it reads in the
+fallbacks without them.
 
 The site is static and expects to be served from the root of its host (`<base href="/">`); the host must serve
 `.wasm` files as `application/wasm`.
@@ -1238,8 +1305,8 @@ The age is minutes under an hour ("5 min", and "1 min" at least), hours under tw
 The tooltip of a mark in flight adds for how long it has been so ("deploying cmdemo2-ui 2.4.43 to uat (3 min so
 far)").
 
-**The dot.** A mark is a dot and its sentence. The dot's colour is the marker's own, a blue that is none of the
-states of health, and it is never the only sign: the shape says the state, and the sentence says it in words.
+**The dot.** A mark is a dot and its sentence. The dot's colour is the marker's own, the sky blue of Clear Measure's
+logo, which is none of the states of health, and it is never the only sign: the shape says the state, and the sentence says it in words.
 
 | Shape | State |
 |---|---|
