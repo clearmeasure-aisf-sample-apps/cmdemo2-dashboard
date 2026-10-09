@@ -23,6 +23,9 @@
 // A tile's deployment ({ state, title, link }, a deployment of the node's deployable that is in flight or just ended)
 // is drawn as a small dot in the corner of the tile: filled and pulsing for executing, hollow for queued, a dot in a
 // ring for waiting, small and still for ended. Its <title> is the sentence; it is a link where the payload has one.
+// The same in words are the tile's last lines, the activity lines: their tone is their kind (waiting, deploying,
+// queued, frozen, freeze, deployed, failed, canceled) and gives them their icon; like every line they are drawn only
+// while the slot holds them, so a diagram whose slots have no rows for them shows the dot alone.
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 // How far "Fit to width" scales the diagram down before it scrolls sideways instead.
@@ -148,6 +151,29 @@ function icon(kind, cx, cy, cls) {
       add('circle', { cx: 6, cy: 6, r: 5.25, class: 'rt-icon__ring' });
       add('path', { d: 'M3.5 6h5', class: 'rt-icon__line' });
       break;
+    // The activity lines. In flight: the shapes of the deployment's dot.
+    case 'act-waiting':
+      add('circle', { cx: 6, cy: 6, r: 5.25, class: 'rt-icon__ring' });
+      add('circle', { cx: 6, cy: 6, r: 2.25, class: 'rt-icon__dot' });
+      break;
+    case 'act-deploying':
+      add('circle', { cx: 6, cy: 6, r: 5, class: 'rt-icon__dot' });
+      break;
+    case 'act-queued':
+      add('circle', { cx: 6, cy: 6, r: 4.25, class: 'rt-icon__ring' });
+      break;
+    case 'act-frozen': // a snowflake: a deployment freeze, in force or coming
+      add('path', { d: 'M6 .8v10.4M1.5 3.4l9 5.2M10.5 3.4l-9 5.2', class: 'rt-icon__line' });
+      break;
+    case 'act-deployed':
+      add('path', { d: 'M2.2 6.4l2.5 2.5 5.1-5.6', class: 'rt-icon__line' });
+      break;
+    case 'act-failed':
+      add('path', { d: 'M2.8 2.8l6.4 6.4M9.2 2.8l-6.4 6.4', class: 'rt-icon__line' });
+      break;
+    case 'act-canceled':
+      add('path', { d: 'M2.5 6h7', class: 'rt-icon__line' });
+      break;
     default: // checking, unknown
       add('circle', { cx: 6, cy: 6, r: 5.25, class: 'rt-icon__ring' });
       add('path', { d: 'M3.6 6h.1M5.95 6h.1M8.3 6h.1', class: 'rt-icon__line' });
@@ -238,7 +264,12 @@ function openBox(event) {
   window.open(href, '_blank', 'noopener');
 }
 
-const LINE_ICON = { insync: 'insync', differs: 'differs', unknown: 'unknown', serving: 'serving', ok: 'ok', warn: 'warn' };
+const LINE_ICON = {
+  insync: 'insync', differs: 'differs', unknown: 'unknown', serving: 'serving', ok: 'ok', warn: 'warn',
+  // The activity lines: what is being deployed to the node's deployable, a deployment freeze, the last deployment.
+  waiting: 'act-waiting', deploying: 'act-deploying', queued: 'act-queued', frozen: 'act-frozen', freeze: 'act-frozen',
+  deployed: 'act-deployed', failed: 'act-failed', canceled: 'act-canceled',
+};
 const BAR = { healthy: 12, unhealthy: 6, unreachable: 2.5 };
 
 function drawTile(group, tile) {

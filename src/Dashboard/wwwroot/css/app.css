@@ -1174,6 +1174,56 @@ main {
   font-size: 0.82rem;
 }
 
+/* What the file says more about a deployment, after its sentence: who is responsible, since when, who started it. */
+.deployments__detail {
+  color: var(--ink-secondary);
+  font-weight: 400;
+}
+
+.deployments__detail::before {
+  content: " · ";
+}
+
+/* The activity lines after the marks: a deployment freeze, and the last deployment that ended. An icon of the
+   line's kind stands where a mark has its dot; the words say it. A freeze in force is ink, as a mark in flight is;
+   the last deployment that failed has the red of words. */
+.activity-icon {
+  flex: none;
+  margin-top: 0.3em;
+  overflow: visible;
+  color: var(--ink-secondary);
+}
+
+.activity-icon__line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.activity-icon--frozen,
+.activity-icon--freeze {
+  color: var(--deploying);
+}
+
+.activity-icon--freeze .activity-icon__line {
+  stroke-width: 1;
+}
+
+.activity-icon--failed {
+  color: var(--critical-ink);
+}
+
+.deployments__line--frozen {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.deployments__line--failed {
+  color: var(--critical-ink);
+}
+
 .deploy-dot {
   flex: none;
   overflow: visible;
@@ -1557,6 +1607,29 @@ main {
 .rt-tile .rt-check.rt-check--degraded .rt-row__icon .rt-icon__mark { stroke: #3a1d22; }
 .rt-tile .rt-check.rt-check--unknown .rt-row__icon .rt-icon__ring,
 .rt-tile .rt-check.rt-check--unknown .rt-row__icon .rt-icon__line { stroke: #ffffff; }
+
+/* The activity lines of a tile: what is being deployed to the node's deployable, a deployment freeze, the last
+   deployment that ended. Their icons are the shapes of the deployment's dot and, for a freeze, a snowflake, in the
+   mark's sky blue (3.5 to 1 on the navy box, more on the others); the words stay white, heavier for what is in
+   flight or in force, quieter for what is only coming or over, and the yellow of a warning for a deployment that
+   failed. Never colour alone: the words say the kind. */
+.rt-tile .rt-line--waiting .rt-row__icon .rt-icon__ring,
+.rt-tile .rt-line--queued .rt-row__icon .rt-icon__ring,
+.rt-tile .rt-line--frozen .rt-row__icon .rt-icon__line,
+.rt-tile .rt-line--freeze .rt-row__icon .rt-icon__line { stroke: #24abe1; }
+.rt-tile .rt-line--freeze .rt-row__icon .rt-icon__line { stroke-width: 1; }
+.rt-icon__dot,
+.rt-tile .rt-line--waiting .rt-row__icon .rt-icon__dot,
+.rt-tile .rt-line--deploying .rt-row__icon .rt-icon__dot { fill: #24abe1; }
+.rt-line--waiting .rt-row__text,
+.rt-line--deploying .rt-row__text,
+.rt-line--frozen .rt-row__text,
+.rt-line--failed .rt-row__text { font-weight: 700; }
+.rt-tile .rt-line--freeze .rt-row__text,
+.rt-tile .rt-line--deployed .rt-row__text,
+.rt-tile .rt-line--canceled .rt-row__text { fill: rgba(255, 255, 255, 0.82); }
+.rt-tile .rt-line--failed .rt-row__text { fill: #eecb1a; }
+.rt-tile .rt-line--failed .rt-row__icon .rt-icon__line { stroke: #eecb1a; }
 
 /* The mark of a deployment in a tile's corner: the logo's sky blue on a disc of the page's navy in a white ring, so
    it reads on a box of any state. Filled: executing (the ring that leaves it is the pulse); hollow: queued; a dot in

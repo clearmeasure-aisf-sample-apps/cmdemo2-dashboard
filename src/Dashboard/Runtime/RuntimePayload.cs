@@ -76,7 +76,10 @@ public sealed record RuntimeTrend(IReadOnlyList<double> Points, string Title)
 /// <param name="Text">The words.</param>
 /// <param name="Tone">
 /// <c>strong</c> (the running version), <c>plain</c>, <c>muted</c>, <c>serving</c>, and for the comparison with the pinned
-/// version <c>insync</c>, <c>differs</c> or <c>unknown</c> (drawn with the dashboard's =, ≠ and dots).
+/// version <c>insync</c>, <c>differs</c> or <c>unknown</c> (drawn with the dashboard's =, ≠ and dots). An activity
+/// line (what is being deployed to the node's deployable, a deployment freeze, the last deployment that ended) has
+/// its kind as its tone: <c>waiting</c>, <c>deploying</c>, <c>queued</c>, <c>frozen</c>, <c>freeze</c>,
+/// <c>deployed</c>, <c>failed</c> or <c>canceled</c> (<see cref="Health.ActivityKind"/>).
 /// </param>
 /// <param name="Parts">
 /// The same words in pieces, where a piece is a link; null for a line without links, which is drawn from
