@@ -66,23 +66,62 @@ public static class RuntimePayloadBuilder
 
         var tiles = manifest.Nodes
             .Where(node => node.Kind != RuntimeNodeKind.Person)
-            .Select(node => Deploying(
-                node.Kind switch
-                {
-                    RuntimeNodeKind.Sql => DatabaseTile(node, Clients(manifest, node, RuntimeEdgeKind.Sql, byAlias), zone, environment?.Info.Links),
-                    RuntimeNodeKind.Dependency => DependencyTile(node, Clients(manifest, node, RuntimeEdgeKind.Dependency, byAlias), zone),
-                    _ => Tile(node, byAlias.GetValueOrDefault(node.Alias), environment, page, zone),
-                },
-                node,
-                deployments))
+            .Select(node => Named(
+                Deploying(
+                    node.Kind switch
+                    {
+                        RuntimeNodeKind.Sql => DatabaseTile(node, Clients(manifest, node, RuntimeEdgeKind.Sql, byAlias), zone, environment?.Info.Links),
+                        RuntimeNodeKind.Dependency => DependencyTile(node, Clients(manifest, node, RuntimeEdgeKind.Dependency, byAlias), zone),
+                        _ => Tile(node, byAlias.GetValueOrDefault(node.Alias), environment, page, zone),
+                    },
+                    node,
+                    deployments),
+                node))
             .ToList();
         var reachable = manifest.Nodes
             .Where(node => node.Kind == RuntimeNodeKind.Sql && tiles.Any(tile => tile.Alias == node.Alias && tile.State == Healthy))
             .Select(node => node.RegionAlias)
             .ToHashSet(StringComparer.Ordinal);
-        var regions = manifest.Regions.Select(region => Region(region, manifest, byAlias, reachable.Contains(region.Alias))).ToList();
+        var regions = manifest.Regions
+            .Select(region => Region(region, manifest, byAlias, reachable.Contains(region.Alias)) with { NameLink = RuntimeBoxLink.Of(region) })
+            .ToList();
         var edges = manifest.Edges.Select(edge => Edge(edge, manifest, byAlias)).ToList();
-        return new RuntimePayload(tiles, regions, edges);
+        return new RuntimePayload(tiles, regions, edges, Names(manifest));
+    }
+
+    /// <summary>
+    /// The tile with where its node's name leads: the link of the topology where it has one (a web app, a Front Door
+    /// endpoint, the database), and else the one the deployment wrote into the manifest (a static site, a node of an
+    /// application with its own runtime).
+    /// </summary>
+    private static RuntimeTile Named(RuntimeTile tile, RuntimeNode node) =>
+        tile.NameLink is not null ? tile : tile with { NameLink = RuntimeBoxLink.Of(node) };
+
+    /// <summary>
+    /// The boxes with a name and nothing else to update, each with its link: the frames that are no region, and the
+    /// browser. Null when the manifest has a link for none (a diagram from before the links), so the payload is as
+    /// it was.
+    /// </summary>
+    private static List<RuntimeName>? Names(RuntimeManifest manifest)
+    {
+        var names = new List<RuntimeName>();
+        foreach (var node in manifest.Nodes.Where(node => node.Kind == RuntimeNodeKind.Person))
+        {
+            if (RuntimeBoxLink.Of(node) is { } link)
+            {
+                names.Add(new RuntimeName(node.Alias, link));
+            }
+        }
+
+        foreach (var frame in manifest.Frames ?? [])
+        {
+            if (RuntimeBoxLink.Of(frame) is { } link)
+            {
+                names.Add(new RuntimeName(frame.Alias, link));
+            }
+        }
+
+        return names.Count == 0 ? null : names;
     }
 
     /// <summary>

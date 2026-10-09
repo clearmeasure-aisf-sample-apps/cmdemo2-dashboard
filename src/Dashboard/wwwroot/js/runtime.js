@@ -14,6 +14,10 @@
 // Links and trends come with the payload too. A link ({ href, title }) is drawn as a real <a> element (a new tab, rel
 // noopener, its own <title>), so it takes the keyboard like any link; a redraw gives the focus back to the link that
 // had it. A trend ({ points: 0..1, title }) is drawn as a small line after its number, with its words in a <title>.
+// A box leads where its name leads: the name of a node, a region or a frame is such a link (nameLink), and a click
+// anywhere else on the box opens the same address (openBox). There is one mechanism, the name's <a>: the box takes no
+// place in the order of the keyboard, where the name link is its stop, and a click on any link inside the box is that
+// link's own.
 // A line's marks ([{ state, title }], the entries of a detailed health check) are drawn before its words, one small
 // icon each: the shape says the state, the <title> the entry's name, state and words.
 // A tile's deployment ({ state, title, link }, a deployment of the node's deployable that is in flight or just ended)
@@ -197,9 +201,11 @@ function row(layer, centre, baseline, line, cls, iconKind, size, key) {
   if (line.trend) sparkline(group, left + iconWidth + textWidth + 6, baseline - 10, TREND_WIDTH, 12, line.trend);
 }
 
-// The node's name, which PlantUML drew, as a link (or as plain text again when the payload has no link for it).
+// The name of a node, a region or a frame, which PlantUML drew, as a link (or as plain text again when the payload
+// has no link for it). The group is marked: a box with a name link is one a click opens (openBox).
 function linkName(group, link, key) {
   let a = [...group.children].find(child => child.localName === 'a' && child.classList.contains('rt-name-link'));
+  group.classList.toggle('rt-linked', Boolean(link));
   if (!link) {
     if (a) a.replaceWith(...[...a.children].filter(child => child.localName === 'text'));
     return;
@@ -213,6 +219,23 @@ function linkName(group, link, key) {
   }
   a.setAttribute('href', link.href);
   a.querySelector('title').textContent = link.title;
+}
+
+// A click on a box goes where its name goes, in a new tab as the name's link does. A click on a link inside the box
+// (the name itself, the badge, a number, the mark of a deployment, an address PlantUML drew) is that link's own and
+// is left alone; so is the click that ends a selection of text.
+function openBox(event) {
+  const target = event.target;
+  if (event.defaultPrevented || event.button !== 0 || !target || !target.closest) return;
+  if (target.closest('a')) return;
+  const group = target.closest('g.rt-linked');
+  if (!group) return;
+  const name = [...group.children].find(child => child.localName === 'a' && child.classList.contains('rt-name-link'));
+  const href = name && name.getAttribute('href');
+  if (!href) return;
+  const selection = window.getSelection && window.getSelection();
+  if (selection && !selection.isCollapsed && group.contains(selection.anchorNode)) return;
+  window.open(href, '_blank', 'noopener');
 }
 
 const LINE_ICON = { insync: 'insync', differs: 'differs', unknown: 'unknown', serving: 'serving', ok: 'ok', warn: 'warn' };
@@ -408,6 +431,13 @@ export function mount(host, svgText) {
     group.classList.add('rt-region');
     const frame = [...group.children].find(child => child.localName === 'rect');
     if (frame) frame.classList.add('rt-frame');
+    // The frame's name is the bold text PlantUML writes first, at the title's size; its type follows, smaller.
+    const texts = [...group.children].filter(child => child.localName === 'text');
+    const size = texts.length > 0 ? texts[0].getAttribute('font-size') : null;
+    for (const text of texts) {
+      if (text.getAttribute('font-weight') !== '700' || text.getAttribute('font-size') !== size) break;
+      text.classList.add('rt-name');
+    }
     takeSlot(group);
   }
   for (const group of svg.querySelectorAll('g.link')) {
@@ -424,6 +454,7 @@ export function mount(host, svgText) {
     }
     takeSlot(group);
   }
+  svg.addEventListener('click', openBox);
   host.replaceChildren(svg);
   return null;
 }
@@ -452,6 +483,13 @@ export function update(host, json) {
     if (!group) { missing.push(`region ${mark.alias}`); continue; }
     group.dataset.rtState = mark.state;
     drawRegion(group, mark);
+    linkName(group, mark.nameLink, `${mark.alias}-name`);
+  }
+  // The boxes with a name and nothing else to update: the frames that are no region, and the browser.
+  for (const name of payload.names || []) {
+    const group = find('g.rt-region, g.rt-node', { key: 'rtAlias', name: name.alias });
+    if (!group) { missing.push(`frame ${name.alias}`); continue; }
+    linkName(group, name.nameLink, `${name.alias}-name`);
   }
   for (const mark of payload.edges || []) {
     const group = find('g.rt-edge', { key: 'rtEdge', name: mark.id });
