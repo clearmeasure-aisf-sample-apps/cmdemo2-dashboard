@@ -11,11 +11,15 @@ public sealed record RuntimeParseResult<T>(T? Value, IReadOnlyList<string> Error
 
 /// <summary>
 /// Reads <c>runtime/index.json</c> and <c>runtime/&lt;env&gt;.json</c>. The deployment writes both next to the SVG it
-/// rendered (<c>deploy-staticwebapp.ps1</c>). Required: the index's environments with their name, manifest and SVG;
+/// rendered (<c>deploy-staticwebapp.ps1</c>). Required: the index's environments with their name, manifest and SVG
+/// (an entry's <c>database</c> is optional: kept when it names two files of <c>runtime/</c>, else left out);
 /// the manifest's nodes with alias and kind, the regions with alias, the relationships with id. Unknown fields and
 /// kinds are kept apart, not refused: a newer diagram still shows. Optional: the frames (with alias), and the
 /// <c>links</c> of a node, a region or a frame, of which only absolute https addresses are kept; a node's
-/// <c>healthPath</c> (a plain path, else left out) and its <c>ids</c> (the strings of the list).
+/// <c>healthPath</c> (a plain path, else left out), its <c>ids</c> (the strings of the list) and, of a web app or a
+/// container app, its <c>architecture</c> (an absolute https address, else left out); and the manifest's
+/// <c>unplaced</c>, the resources in no environment: an entry with a name is kept, anything else of the member is
+/// left out and never an error.
 /// </summary>
 public static class RuntimeManifestParser
 {
@@ -55,7 +59,7 @@ public static class RuntimeManifestParser
 
                 var manifest = RelativeFile(element, "manifest", $"{name}.json", path, errors);
                 var svg = RelativeFile(element, "svg", $"{name}.svg", path, errors);
-                entries.Add(new RuntimeIndexEntry(name, manifest, svg));
+                entries.Add(new RuntimeIndexEntry(name, manifest, svg, Database(element)));
             }
 
             return errors.Count > 0
@@ -96,9 +100,10 @@ public static class RuntimeManifestParser
                     errors.Add($"{path}.url: not an absolute http or https address.");
                 }
 
+                var kind = NodeKind(Text(element, "kind"));
                 return new RuntimeNode(
                     alias,
-                    NodeKind(Text(element, "kind")),
+                    kind,
                     Text(element, "name") ?? alias,
                     url,
                     Text(element, "deployable"),
@@ -109,7 +114,8 @@ public static class RuntimeManifestParser
                     Text(element, "dependencyKind"),
                     Links(element),
                     HealthPath(element),
-                    Ids(element));
+                    Ids(element),
+                    Architecture(element, kind));
             });
             var regions = ReadArray(root, "regions", errors, (element, path) =>
             {
@@ -153,7 +159,7 @@ public static class RuntimeManifestParser
 
             return errors.Count > 0 || environment is null
                 ? new RuntimeParseResult<RuntimeManifest>(null, errors)
-                : new RuntimeParseResult<RuntimeManifest>(new RuntimeManifest(environment, nodes, regions, edges, frames), []);
+                : new RuntimeParseResult<RuntimeManifest>(new RuntimeManifest(environment, nodes, regions, edges, frames, Unplaced(root)), []);
         }
     }
 
@@ -228,13 +234,27 @@ public static class RuntimeManifestParser
     private static string RelativeFile(JsonElement element, string property, string fallback, string path, List<string> errors)
     {
         var file = Text(element, property) ?? fallback;
-        if (file.Contains('/', StringComparison.Ordinal) || file.Contains('\\', StringComparison.Ordinal) || file.Contains(':', StringComparison.Ordinal) || file.StartsWith('.'))
+        if (!IsFileName(file))
         {
             errors.Add($"{path}.{property}: not a file name in runtime/.");
         }
 
         return file;
     }
+
+    /// <summary>
+    /// The files of an environment's database view: both plain names in <c>runtime/</c>. Anything else is left out,
+    /// never an error: the runtime diagram shows all the same, and the database's box behaves as without the files.
+    /// </summary>
+    private static RuntimeDatabaseFiles? Database(JsonElement entry) =>
+        entry.TryGetProperty("database", out var database) && database.ValueKind == JsonValueKind.Object
+            && Text(database, "svg") is { } svg && IsFileName(svg)
+            && Text(database, "manifest") is { } manifest && IsFileName(manifest)
+            ? new RuntimeDatabaseFiles(svg, manifest)
+            : null;
+
+    private static bool IsFileName(string file) =>
+        !(file.Contains('/', StringComparison.Ordinal) || file.Contains('\\', StringComparison.Ordinal) || file.Contains(':', StringComparison.Ordinal) || file.StartsWith('.'));
 
     private static string? Text(JsonElement parent, string property)
     {
@@ -279,6 +299,66 @@ public static class RuntimeManifestParser
         return found.Count == 0 ? null : new Health.LinkSet(found);
     }
 
+    /// <summary>The longest text kept of an entry of <c>unplaced</c>, and the most entries.</summary>
+    public const int LongestUnplacedText = 300;
+    public const int MostUnplaced = 500;
+    private const int LongestAddress = 2000;
+
+    /// <summary>
+    /// The manifest's <c>unplaced</c>: the objects of the list that have a name, the first <see cref="MostUnplaced"/>.
+    /// A text is cut at <see cref="LongestUnplacedText"/> characters; <c>links.portal</c>, <c>links.site</c> and
+    /// <c>url</c> are kept only as absolute https addresses. Null without the member (a manifest from before it), and
+    /// where it is no list: nothing here is an error, the diagram shows all the same.
+    /// </summary>
+    private static List<RuntimeUnplaced>? Unplaced(JsonElement root)
+    {
+        if (!root.TryGetProperty("unplaced", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        var found = new List<RuntimeUnplaced>();
+        foreach (var element in array.EnumerateArray())
+        {
+            if (found.Count == MostUnplaced)
+            {
+                break;
+            }
+
+            if (element.ValueKind != JsonValueKind.Object || Cut(element, "name") is not { } name)
+            {
+                continue;
+            }
+
+            var links = element.TryGetProperty("links", out var map) && map.ValueKind == JsonValueKind.Object ? map : (JsonElement?)null;
+            found.Add(new RuntimeUnplaced(
+                name,
+                Cut(element, "type"),
+                Cut(element, "group"),
+                Cut(element, "words"),
+                Ids(element)?.Select(id => id.Length > LongestUnplacedText * 2 ? id[..(LongestUnplacedText * 2)] : id).ToList(),
+                links is { } portal ? Secure(portal, "portal") : null,
+                (links is { } site ? Secure(site, "site") : null) ?? Secure(element, "url")));
+        }
+
+        return found;
+    }
+
+    /// <summary>A text of an entry of <c>unplaced</c>, cut at <see cref="LongestUnplacedText"/> characters.</summary>
+    private static string? Cut(JsonElement parent, string property) =>
+        Text(parent, property) is { } text
+            ? text.Length > LongestUnplacedText ? text[..LongestUnplacedText] : text
+            : null;
+
+    /// <summary>An absolute https address without a user name, of a sensible length; anything else is null.</summary>
+    private static Uri? Secure(JsonElement parent, string property) =>
+        Text(parent, property) is { Length: <= LongestAddress } text
+        && Uri.TryCreate(text, UriKind.Absolute, out var address)
+        && address.Scheme == Uri.UriSchemeHttps
+        && address.UserInfo.Length == 0
+            ? address
+            : null;
+
     /// <summary>The longest health path kept, and the most ids of one box.</summary>
     private const int LongestPath = 200;
     private const int MostIds = 200;
@@ -291,6 +371,20 @@ public static class RuntimeManifestParser
         Text(parent, "healthPath") is { Length: <= LongestPath } path && path[0] == '/' && !path.StartsWith("//", StringComparison.Ordinal)
             && path.All(character => char.IsAsciiLetterOrDigit(character) || "/._~-".Contains(character, StringComparison.Ordinal))
             ? path
+            : null;
+
+    /// <summary>
+    /// Where the diagrams of a node's deployable are published: an absolute https address without a query, of a web
+    /// app or a container app. The page builds the addresses it asks from it. Anything else is left out, never an
+    /// error: the box then behaves as without one.
+    /// </summary>
+    private static Uri? Architecture(JsonElement parent, RuntimeNodeKind kind) =>
+        kind is RuntimeNodeKind.WebApp or RuntimeNodeKind.ContainerApp
+        && Text(parent, "architecture") is { Length: <= LongestPath * 2 } text
+        && Uri.TryCreate(text, UriKind.Absolute, out var address)
+        && address.Scheme == Uri.UriSchemeHttps
+        && address.Query.Length == 0 && address.Fragment.Length == 0 && address.UserInfo.Length == 0
+            ? address
             : null;
 
     /// <summary>A node's resource ids: the strings of its list that are not empty; null without one.</summary>
