@@ -11,7 +11,16 @@ public sealed record RuntimeIndex(IReadOnlyList<RuntimeIndexEntry> Environments,
 /// <param name="Name">The environment's name, as in <c>topology.json</c>.</param>
 /// <param name="Manifest">The manifest's file, relative to <c>runtime/</c>.</param>
 /// <param name="Svg">The diagram's file, relative to <c>runtime/</c>.</param>
-public sealed record RuntimeIndexEntry(string Name, string Manifest, string Svg);
+/// <param name="Database">
+/// The files of the environment's database view; null where the deployment recorded no schema (the database's box
+/// then only leads to the Azure portal).
+/// </param>
+public sealed record RuntimeIndexEntry(string Name, string Manifest, string Svg, RuntimeDatabaseFiles? Database = null);
+
+/// <summary>The two files of an environment's database view, relative to <c>runtime/</c>.</summary>
+/// <param name="Svg">The diagram of the tables.</param>
+/// <param name="Manifest">Which drawn table is which (<see cref="DatabaseManifest"/>).</param>
+public sealed record RuntimeDatabaseFiles(string Svg, string Manifest);
 
 public enum RuntimeNodeKind
 {
@@ -81,12 +90,37 @@ public enum RuntimeEdgeKind
 /// The frames that are no region (the subscription, a resource group, the Front Door profile, a plan, a cluster);
 /// null in a manifest from before they were listed.
 /// </param>
+/// <param name="Unplaced">
+/// The resources of the system that are in no environment: a list under the diagram, never a box of it
+/// (<see cref="UnplacedText"/>). Null in a manifest without the list: one from before it draws them as boxes of a
+/// frame "In no environment", and still does.
+/// </param>
 public sealed record RuntimeManifest(
     string Environment,
     IReadOnlyList<RuntimeNode> Nodes,
     IReadOnlyList<RuntimeRegion> Regions,
     IReadOnlyList<RuntimeEdge> Edges,
-    IReadOnlyList<RuntimeFrame>? Frames = null);
+    IReadOnlyList<RuntimeFrame>? Frames = null,
+    IReadOnlyList<RuntimeUnplaced>? Unplaced = null);
+
+/// <summary>A resource of the system's resource groups that no environment tag places. Every string is untrusted text.</summary>
+/// <param name="Name">The resource's name.</param>
+/// <param name="Type">What it is, in words; null when the manifest does not say.</param>
+/// <param name="Group">Its resource group.</param>
+/// <param name="Words">Why it is in no environment: <c>no environment tag</c>, or <c>tagged zzz: no such environment</c>.</param>
+/// <param name="Ids">Its resource ids, by which the page finds what Resource Health said of it; null without one.</param>
+/// <param name="Portal">Its page in the Azure portal; null without an absolute https address.</param>
+/// <param name="Site">
+/// Its own public address (<c>links.site</c>, else <c>url</c>); null without an absolute https address.
+/// </param>
+public sealed record RuntimeUnplaced(
+    string Name,
+    string? Type = null,
+    string? Group = null,
+    string? Words = null,
+    IReadOnlyList<string>? Ids = null,
+    Uri? Portal = null,
+    Uri? Site = null);
 
 /// <param name="Alias">The element's name in the PlantUML source: the last part of its <c>data-qualified-name</c>.</param>
 /// <param name="Kind">What it is.</param>
@@ -111,6 +145,11 @@ public sealed record RuntimeManifest(
 /// The Azure resource ids the box stands for, from the resource groups' listing, by which the page finds what Resource
 /// Health said of them; null in a manifest from before the ids, and where the listing has none.
 /// </param>
+/// <param name="Architecture">
+/// For a web app or a container app: where the repository of its deployable publishes the diagram of every released
+/// version (<c>&lt;address&gt;/&lt;version&gt;.json</c> and <c>.svg</c>, on another origin); the box then leads into
+/// the application view. Null without one, and for anything but an absolute https address.
+/// </param>
 public sealed record RuntimeNode(
     string Alias,
     RuntimeNodeKind Kind,
@@ -124,7 +163,8 @@ public sealed record RuntimeNode(
     string? DependencyKind = null,
     Health.LinkSet? Links = null,
     string? HealthPath = null,
-    IReadOnlyList<string>? Ids = null);
+    IReadOnlyList<string>? Ids = null,
+    Uri? Architecture = null);
 
 /// <param name="Alias">The region boundary's alias.</param>
 /// <param name="Name">The Azure region.</param>
